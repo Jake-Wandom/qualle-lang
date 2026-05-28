@@ -1,0 +1,12 @@
+# ignore binaries
+build/
+*.o
+*.d
+*.a
+*.so
+*.out
+*.
+
+# ignore VSCode and MacOS files
+*.DS_Store
+*.vscode
