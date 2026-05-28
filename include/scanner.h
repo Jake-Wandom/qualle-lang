@@ -1,0 +1,29 @@
+#ifndef H_SCANNER_QUALLE
+#define H_SCANNER_QUALLE
+
+// enum that defines the token types
+enum token_type {
+    STRING,
+    NUMBER,
+    OPERATOR,
+    COMMENT,
+    WHITESPACE,
+    BRACKET_OPEN,
+    BRACKET_CLOSE,
+    DELIMITER,
+    END_OF_LINE,
+    END,
+    UNKOWN
+};
+
+//struct that defines tokens
+typedef struct token {
+    enum token_type type;
+    char* value;
+    struct token* prev_token;
+    struct token* next_token;
+} token;
+
+token* get_token(char* buffer);
+
+#endif
