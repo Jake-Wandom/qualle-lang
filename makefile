@@ -10,8 +10,8 @@ DEP_DIR := build/dep
 
 # Compiler and Flags
 CC := gcc
-CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes -I$(INC_DIR)
-LDFLAFA := 
+CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wstrict-prototypes -I$(INC_DIR) # removed -Wmissing-prototypes
+LDFLAGS := 
 LIBS :=
 
 # Debug (make DEBUG=1)
@@ -33,7 +33,7 @@ BINARY := $(BIN_DIR)/$(TARGET)
 
 # Default Target
 .PHONY: all
-all: $(Binary)
+all: $(BINARY)
 $(BINARY): $(OBJS) | $(BIN_DIR)
 	$(CC) $(LDFLAGS) $^ -o $@ $(LIBS)
 	@echo "Linked -> $@"
@@ -62,7 +62,7 @@ check: all
 
 .PHONY: install
 install: all
-	install -DM755 $(BINARY) /usr/local/bin/$(TARGET)
+	install -Dm755 $(BINARY) /usr/local/bin/$(TARGET)
 
 .PHONY: format
 format:
@@ -79,6 +79,6 @@ info:
 	@echo "Sources: $(SRCS)"
 	@echo "CFLAGS: $(CFLAGS)"
 
-# DIrectory Creation
+# Directory Creation
 $(BIN_DIR) $(OBJ_DIR) $(DEP_DIR):
 	mkdir -p $@
