@@ -1,29 +1,28 @@
 #ifndef H_PARSER_QUALLE
 #define H_PARSER_QUALLE
 
-// enum for token types
-enum type{
-    FUNCTION,
-    NAME,
-    VALUE,
+// enum for variable types
+enum variable_type {
+    VAR_QBIT,
+    VAR_BIT,
+    VAR_BOOL,
+    VAR_INTEGER,
+    VAR_NATURAL,
+    VAR_RATIONAL,
+    VAR_IRRATIONAL,
+    VAR_COMPLEX,
+    VAR_CHAR,
+    VAR_STRING
+};
+
+// enum for keywords
+enum keywords {
     IF,
     ELSE,
     WHILE,
     FOR,
-    END,
-    EMPTY,
-    UNKOWN
-};
-// enum for variable types
-enum variable_type{
-    QBIT,
-    BIT,
-    INTEGER,
-    NATURAL,
-    RATIONAL,
-    IRRATIONAL,
-    COMPLEX,
-    STRING
+    DEF,
+    MAIN
 };
 
 #endif

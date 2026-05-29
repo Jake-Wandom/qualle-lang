@@ -22,6 +22,15 @@ else
 	CFLAGS += -O2 -DNDEBUG
 endif
 
+# allow args
+ifeq (run,$(firstword $(MAKECMDGOALS)))
+  # use the rest as arguments for "run"
+  RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  # ...and turn them into do-nothing targets
+  $(eval $(RUN_ARGS):;@:)
+endif
+
+
 # Sources
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
 OBJS := $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
@@ -48,7 +57,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR) $(DEP_DIR)
 # Utility Targets
 .PHONY: run
 run: all
-	./$(BINARY)
+	./$(BINARY) $(RUN_ARGS)
 
 .PHONY: clean
 clean:
