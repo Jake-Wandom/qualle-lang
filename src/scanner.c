@@ -206,8 +206,7 @@ token* get_token(char* buffer){
     }
 
     // we generate the first token in the linked list
-    // if first_token already exists it return NULL
-    token* current_token = create_token(NULL);
+    token* current_token = create_token(first_token);
     if(current_token == NULL){
         fprintf(stderr, "Something went wrong, while creating the first token\n");
     }
