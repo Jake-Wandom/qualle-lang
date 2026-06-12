@@ -3,7 +3,7 @@
 
 // enum that defines the token types
 enum token_type {
-    STRING,
+    INDICATOR,
     NUMBER,
     OPERATOR,
     COMMENT,

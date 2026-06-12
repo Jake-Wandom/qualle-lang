@@ -2,13 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/*
-tokens are contained in a double linked list
-we only have a pointer to the first token and its previous token is always NULL
-*/
-static token* first_token = NULL;
-
+#include <stdbool.h>
 
 /*
 creates a new token with unkown type and appends it in the token linked list
@@ -21,14 +15,11 @@ token* create_token(token* current_token){
     new_token->value = NULL;
     new_token->next_token = NULL;
 
-    if(!first_token){
-        first_token = new_token;
-        first_token->prev_token = NULL;
-    } else if(current_token){
+    if(current_token){
         current_token->next_token = new_token;
         new_token->prev_token = current_token;
     } else {
-        fprintf(stderr, "Could not append new token to the list\n");
+        fprintf(stderr, "create_token has not recieved a valid token\n");
         free(new_token);
         return NULL;
     }
@@ -40,11 +31,13 @@ this is basically a huge switch case that assigns chars to tokens
 more details are provided in the comments for the unique cases
 the function returns either the old or a new token
 */
-token* check_token(char chr, token* tok){
-    token* current_token = tok;
-
+token* check_token(char chr, token* current_token){
+    if(current_token == NULL){
+        fprintf(stderr, "check_token has not recieved a valid token\n");
+        return NULL;
+    }
     switch(chr) {
-        // multiple consecutive whitespaces are collapsed into one token since we don't check indentation
+        // whitespaces 
         case ' ':
             if(current_token->type != WHITESPACE){
                 current_token = create_token(current_token);
@@ -57,7 +50,7 @@ token* check_token(char chr, token* tok){
         // \n and ; are recongised as line breaks and are also collapsed into one token if consecutive
         case '\n':
         case ';':
-            if(current_token->type != END_OF_LINE){
+        if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
                 current_token->type = END_OF_LINE;
                 current_token->value = malloc(sizeof(char));
@@ -141,7 +134,7 @@ token* check_token(char chr, token* tok){
         case 'a' ... 'z':
         case 'A' ... 'Z':
         case '_':
-            if(current_token->type == STRING){
+            if(current_token->type == INDICATOR){
                 size_t len = strlen(current_token->value);
                 if((len % 7) == 0){
                     current_token->value = realloc(current_token->value, len+(8*sizeof(char)));
@@ -150,7 +143,7 @@ token* check_token(char chr, token* tok){
                 *(current_token->value+len+1) = '\0';
             } else {
                 current_token = create_token(current_token);
-                current_token->type = STRING;
+                current_token->type = INDICATOR;
                 current_token->value = calloc(8, sizeof(char));
                 *(current_token->value) = chr;
                 *(current_token->value+1) = '\0';
@@ -196,7 +189,15 @@ returns the first token of the list
 token* get_token(char* buffer){
     // make sure we are starting with a fresh token list
     // the main function has to keep track of old lists and free them
-    first_token = NULL;
+    
+    // tokens are contained in a double linked list
+    //we only have a pointer to the first token and its previous token is always NULL
+    token *first_token = NULL;
+    first_token = malloc(sizeof(token));
+    first_token->type = UNKOWN;
+    first_token->prev_token = NULL;
+    first_token->next_token = NULL;
+    first_token->value = NULL;
     
     // checking if the string contains \0 to mark the end. We don't have a length so we do not know, if this is the intended end of string.
     if(!strchr(buffer, '\0')){
@@ -216,6 +217,9 @@ token* get_token(char* buffer){
         buffer++;
         chr = *buffer;
     }
+    // create the end token
+    current_token = create_token(current_token);
+    current_token->type = END;
     
     if(first_token == NULL){
         fprintf(stderr, "Token list empty\n");
