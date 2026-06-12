@@ -17,12 +17,54 @@ void zero_buffer(char* buffer, size_t size){
 
 void print_token_list(token* first_token){
     while(first_token != NULL){
-        if((first_token->type == INDICATOR) || (first_token->type == NUMBER)){
-            printf("Token Type: %i, Token value %s\n", first_token->type, first_token->value);
-        } else if (first_token->type != UNKOWN){
-            printf("Token Type: %i, Token value %c\n", first_token->type, *(first_token->value));
-        } else {
-            printf("Token Type: %i, Token value %s\n", first_token->type, first_token->value);
+        switch(first_token->type){
+            case INDICATOR:
+                printf("[IND:%s]", first_token->value);
+                break;
+            
+            case NUMBER:
+                printf("[NUM:%s]", first_token->value);
+                break;
+
+            case WHITESPACE:
+                printf("[WHI:%s]", first_token->value);
+                break;
+            
+            case END_OF_LINE:
+                printf("[EOL:%s]\n", first_token->value);
+                break;
+
+            case DELIMITER:
+                printf("[DEL:%s]", first_token->value);
+                break;
+
+            case COMMENT:
+                printf("[COM:%s]", first_token->value);
+                break;
+
+            case BRACKET_CLOSE:
+                printf("[BC:%s]", first_token->value);
+                break;
+
+            case BRACKET_OPEN:
+                printf("[BO:%s]", first_token->value);
+                break;
+
+            case OPERATOR:
+                printf("[OP:%s]", first_token->value);
+                break;
+
+            case END:
+                printf("\n[END]\n\n");
+                break;
+            
+            case UNKOWN:
+                if(first_token->value == NULL) printf("[UNKNOWN]");
+                else printf("[UN:%c]", *(first_token->value));
+                break;
+            
+            default:
+                fprintf(stderr, "Unkown token type %i", first_token->type);
         }
         first_token = first_token->next_token;
     }
@@ -114,11 +156,12 @@ int main(int argc, char **argv){
     
     // now we process all files into token streams
     char* main_buffer = calloc(buffer_size, sizeof(char));
-    char* line_buffer = calloc(1024, sizeof(char));
+    char* line_buffer = calloc(512, sizeof(char));
     token* first_token;
 
     // generate tokens for standard lib
-    while(fgets(line_buffer, 1024, f) != NULL){
+    while(fgets(line_buffer, 512, f) != NULL){
+        *(line_buffer+511) = '\0';
         printf("%s", line_buffer);
         strcat(main_buffer, line_buffer);
     }
@@ -134,12 +177,13 @@ int main(int argc, char **argv){
 
     // reset buffer
     zero_buffer(main_buffer, buffer_size);
-    zero_buffer(line_buffer, 1024);
+    zero_buffer(line_buffer, 512);
 
 
     for(int i = 0; i < num_of_files; i++){
         printf("Content of %i. file:\n",i+1);
-        while(fgets(line_buffer, 1024, *(files+i)) != NULL){
+        while(fgets(line_buffer, 512, *(files+i)) != NULL){
+            *(line_buffer+511) = '\0';
             printf("%s", line_buffer);
             strcat(main_buffer, line_buffer);
         }
@@ -155,7 +199,7 @@ int main(int argc, char **argv){
 
         // reset buffer
         zero_buffer(main_buffer, buffer_size);
-        zero_buffer(line_buffer, 1024);
+        zero_buffer(line_buffer, 512);
     }
 
     // close all files and free all pointers
