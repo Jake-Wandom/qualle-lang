@@ -2,6 +2,7 @@
 #define H_PARSER_QUALLE
 
 #include "scanner.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 // enum for variable types
@@ -18,21 +19,23 @@ enum variable_type {
     VAR_STRING
 };
 
-enum loop_type {
-    loop_WHILE,
-    loop_FOR
-};
-
-enum function_type {
-    CLASSICAL,
-    QUANTUM
+enum error_type {
+    UNEXPECTED_ERROR,
+    WRONG_TYPE_ERROR,
+    UNKOWN_SYMBOL_ERROR,
+    NO_CONTEXT_ERROR,
+    NO_CLONING_ERROR,
+    NO_CONSUMPTION_ERROR,
+    MISSING_VARIABLE_ERROR,
+    NAME_CONFLICT_ERROR
 };
 
 enum operation_type {
     ADDITION,
     SUBTRACTION,
     MULTIPLICATION,
-    DIVISION
+    DIVISION,
+    MOD
 };
 
 enum boolean_operation_type {
@@ -72,22 +75,16 @@ typedef struct boolean_operation {
 
 } condition;
 
-typedef struct for_loop {
-    uint16_t num_of_iterations;
-    struct abstract_syntax_tree *body;
-
-} l_for;
-
 typedef struct while_loop {
     condition condition;
-    
+    struct abstract_syntax_tree *body;
 } l_while;
 
 typedef struct function {
-    enum function_type type;
+    bool quantum;
     struct abstract_syntax_tree *body;
     int num_of_variables;
-    variable *variables;
+    variable **variables;
 
 } function;
 
@@ -104,7 +101,7 @@ typedef struct abstract_syntax_tree {
     struct abstract_syntax_tree *branch;
     union {
         variable *var;
-        l_for for_loop;
+        l_while loop;
         function func;
         bin_op op;
     };

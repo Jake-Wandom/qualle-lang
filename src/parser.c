@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-ast* create_node(ast* current_node){
+static int num_of_errors = 0;
+
+ast* create_node(ast *current_node){
     ast *new_node = malloc(sizeof(ast));
     new_node->type = NOT_DET;
     new_node->branch = NULL;
@@ -18,99 +20,105 @@ ast* create_node(ast* current_node){
     return new_node;
 }
 
-ast* check_ind_context(ast *current_node, token *current_token){
-    switch(current_node->type){
-        case ROOT:
-        case VAR_DEF:
-        case CONDITIONAL:
-        case CONDITION:
-        case LOOP:
-        case FUNC_DEF:
+void handle_error(token *error_token, enum error_type type, char *error_message){
+    num_of_errors++;
+    // locate position
 
-        case RETURN:
-            break;
-        case MAIN:
-            break;
-        // this should not happen
-        case NOT_DET:
-            break;
-        default:
-    }
 }
 
-ast* establish_context(ast *current_node, token *current_token){
-    if(current_node->type != NOT_DET){
-        fprintf(stderr, "unable to establish context, node already possesses it\n");
+ast* handle_function(bool quantum, ast *current_node, token *current_token){
+    ast *new_node = create_node(current_node);
+    new_node->type = FUNC_DEF;
+    new_node->func.quantum = quantum;
+
+    current_token = current_token->next_token;
+    if(!current_token) fprintf(stderr, "Null pointer\n");
+
+    if((current_token->type != DELIMITER) || (strcmp(current_token->value, ".") != 0)){
+        handle_error(current_token, UNEXPECTED_ERROR, "Expected '.' in function definition");
         return NULL;
-    } else if(current_token->value == NULL){
-        fprintf(stderr, "unable to establish context, token has no value\n");
+    }
+    
+    current_token = current_token->next_token;
+    if(!current_token) fprintf(stderr, "Null pointer\n");
+
+    if((current_token->type != INDICATOR) || (strcmp(current_token->value, "def") != 0)){
+        handle_error(current_token, UNEXPECTED_ERROR, "Expected 'def' in function definition");
         return NULL;
     }
 
-    if(strcmp(current_token->value, "q") == 0){
-        // since we have no context, we interpret q as the start of a quantum function
-        // we are now walking forward in the  token list to check if this is the case
-        if((current_token->next_token->type == DELIMITER) && (current_token->next_token->next_token->type == INDICATOR)){
-            if((strcmp(current_token->next_token->value, ".") == 0) && (strcmp(current_token->next_token->next_token->value, "def") == 0)){
-                current_node->type = FUNC_DEF;
-                current_node->func.type = QUANTUM;
-            }
-        }
+    current_token = current_token->next_token;
+    if(!current_token) fprintf(stderr, "Null pointer\n");
 
-    } else if(strcmp(current_token->value, "c" == 0)){
+    if((current_token->type != BRACKET_OPEN) || (strcmp(current_token->value, "(") != 0)){
+        handle_error(current_token, UNEXPECTED_ERROR, "Expected '(' in function definition");
+        return NULL;
+    }
 
-    } else if(strcmp(current_token->value, "if") == 0){
+    current_token = current_token->next_token;
+    if(!current_token) fprintf(stderr, "Null pointer\n");
 
-    } else if(strcmp(current_token->value, "else") == 0){
-
-    } else if(strcmp(current_token->value, "for") == 0){
-
-    } else if(strcmp(current_token->value, "while") == 0){
-
-    } else if(strcmp(current_token->value, "return") == 0){
-
-    } else if(strcmp(current_token->value, "main") == 0){
-
-    } else if(strcmp(current_token->value, "qbit") == 0){
+    if(current_token->type == INDICATOR){
+        
+    } else if((current_token->type == BRACKET_CLOSE) && (strcmp(current_token->value, ")") == 0)){
         
     }
 }
 
-ast* evaluate_token(ast *current_node, token *current_token){
-    if((current_token == NULL) || (current_node == NULL)){
-        fprintf(stderr, "check_node has not recieved a valid token");
-        return NULL;
+ast* handle_include(ast *current_node, token *current_token){
+
+}
+
+ast* handle_main(ast *current_node, token *current_token){
+
+}
+
+ast* handle_indicator(ast *current_node, token *current_token){
+    
+}
+
+
+ast* start(ast *current_node, token *current_token){
+    switch(current_token->type){
+        case INDICATOR:
+            if(strcmp(current_token->value, "q") == 0){
+                // go to function state with quantum
+                return handle_function(1, current_node, current_token);
+            } else if(strcmp(current_token->value, "c") == 0){
+                // go to function state with classical
+                return handle_function(0, current_node, current_token);
+            } else if(strcmp(current_token->value, "include") == 0){
+                // go to include state
+                return handle_include(current_node, current_token);
+            } else if(strcmp(current_token->value, "main") == 0){
+                // go to main state
+                return handle_main(current_node, current_token);
+            } else {
+                // go to indicator state that decides what this indicator is
+                return handle_indicator(current_node, current_token);
+            }
+            break;
+
+        case COMMENT:
+            while(current_token->type != END_OF_LINE){
+                current_token = current_token->next_token;
+            }
+            return start(current_node, current_token);
+            break;
+
+        case WHITESPACE:
+        case END_OF_LINE:
+            current_token = current_token->next_token;
+            return start(current_node, current_token);
+            break;
+            
+        case END:
+            return NULL;
+            break;
+
+        default:
+            handle_error(current_token, 0, "Not recognised in this context");
     }
-
-    switch (current_token->type){
-            case INDICATOR:
-                if(current_node->type != NOT_DET){
-
-                }
-                break;
-            case NUMBER:
-                break;
-            case OPERATOR:
-                break;
-            case COMMENT:
-                break;
-            case WHITESPACE:
-                break;
-            case BRACKET_OPEN:
-                break;
-            case BRACKET_CLOSE:
-                break;
-            case DELIMITER:
-                break;
-            case END_OF_LINE:
-                break;
-            case END:
-                break;
-            case UNKOWN:
-                break;
-            default:
-                fprintf(stderr, "unkown token type\n");
-        }
 }
 
 ast* generate_ast(token *first_token){
@@ -121,7 +129,6 @@ ast* generate_ast(token *first_token){
     token *current_token = first_token;
     ast *current_node = root;
     while(current_token != NULL){
-        current_node = check_node(current_node, current_token);
     }
     return root;
 }
