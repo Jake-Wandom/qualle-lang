@@ -3,9 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 void print_man_page(){
-    printf("qcc does not have a man page yet T_T\n");
+    printf("quallcom does not have a man page yet T_T\n");
 }
 
 void zero_buffer(char* buffer, size_t size){
@@ -16,7 +17,7 @@ void zero_buffer(char* buffer, size_t size){
 
 void print_token_list(token* first_token){
     while(first_token != NULL){
-        if((first_token->type == STRING) || (first_token->type == NUMBER)){
+        if((first_token->type == INDICATOR) || (first_token->type == NUMBER)){
             printf("Token Type: %i, Token value %s\n", first_token->type, first_token->value);
         } else if (first_token->type != UNKOWN){
             printf("Token Type: %i, Token value %c\n", first_token->type, *(first_token->value));
@@ -40,6 +41,11 @@ void free_token_list(token* first_token){
 }
 
 int main(int argc, char **argv){
+    bool qir = 0;
+    bool optimisation = 0;
+    bool print = 0;
+    char stdlib_path[] = "include/stdlib.ql";
+
     // first we process all input args: flags and files
     // num_of_files and files contain all file pointers to file names from argv
     int num_of_files = 0;
@@ -50,13 +56,22 @@ int main(int argc, char **argv){
             if(strcmp(argv[i],"--help") == 0){
                 print_man_page();
                 return 0;
-                continue;
             }
             switch (argv[i][1]){
                 // help -> print man page
                 case 'h':
                     print_man_page();
                     return 0;
+                // qir -> generate quantum ir instead of bitcode
+                case 'q':
+                    qir = 1;
+                    break;
+                // optimise -> use optimisation strategies
+                case 'o':
+                    optimisation = 1;
+                    break;
+                case 'p':
+                    print = 1;
                     break;
                 default:
                     fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
@@ -70,33 +85,77 @@ int main(int argc, char **argv){
             *(files+num_of_files-1) = fopen(argv[i], "r+");
             
             if(*(files+num_of_files-1) == NULL){
-                fprintf(stderr, "Could not open file %s\n", argv[i]);
+                fprintf(stderr, "Could not locate or open file %s\n", argv[i]);
             }
         }
     }
+
+    // we compile the standard library and compile it before
+    FILE *f = fopen(stdlib_path, "r+");
+    if(f == NULL){
+        fprintf(stderr, "Could not find or failed to open standard library at %s\n", stdlib_path);
+        return 1;
+    }
+
+    // determine the maximum buffer size
+    // we start with the standard lib file size
+    fseek(f, 0, SEEK_END);
+    size_t buffer_size = ftell(f);
+    rewind(f);
+
+    // now repeat for all other files
+    for(int i = 0; i < num_of_files; i++){
+        fseek(*(files+i), 0, SEEK_END);
+        if(ftell(*(files+i)) > buffer_size){
+            buffer_size = ftell(*(files+i));
+        }
+        rewind(*(files+i));
+    }
     
     // now we process all files into token streams
-    char* main_buffer = calloc(1024,sizeof(char));
-    char* buf = calloc(256, sizeof(char));
+    char* main_buffer = calloc(buffer_size, sizeof(char));
+    char* line_buffer = calloc(1024, sizeof(char));
     token* first_token;
+
+    // generate tokens for standard lib
+    while(fgets(line_buffer, 1024, f) != NULL){
+        printf("%s", line_buffer);
+        strcat(main_buffer, line_buffer);
+    }
+    printf("\n");
+
+    first_token = get_token(main_buffer);
+    if(print == 1){
+        print_token_list(first_token);
+    }
+    // atm for tests, we immediatly free the list
+    // in the future we will have to save all lists
+    free_token_list(first_token);
+
+    // reset buffer
+    zero_buffer(main_buffer, buffer_size);
+    zero_buffer(line_buffer, 1024);
+
 
     for(int i = 0; i < num_of_files; i++){
         printf("Content of %i. file:\n",i+1);
-        while(fgets(buf, 256, *(files+i)) != NULL){
-            printf("%s", buf);
-            strcat(main_buffer, buf);
+        while(fgets(line_buffer, 1024, *(files+i)) != NULL){
+            printf("%s", line_buffer);
+            strcat(main_buffer, line_buffer);
         }
         printf("\n");
 
         first_token = get_token(main_buffer);
-        print_token_list(first_token);
+        if(print == 1){
+            print_token_list(first_token);
+        }
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists
         free_token_list(first_token);
 
         // reset buffer
-        zero_buffer(main_buffer, 1024);
-        zero_buffer(buf, 256);
+        zero_buffer(main_buffer, buffer_size);
+        zero_buffer(line_buffer, 1024);
     }
 
     // close all files and free all pointers
@@ -105,6 +164,6 @@ int main(int argc, char **argv){
     }
     free(files);
     free(main_buffer);
-    free(buf);
+    free(line_buffer);
     return 0;
 }

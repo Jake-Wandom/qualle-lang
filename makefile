@@ -1,4 +1,4 @@
-TARGET := qualcom
+TARGET := quallcom
 
 # Directories
 SRC_DIR := src
