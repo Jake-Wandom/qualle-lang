@@ -4,6 +4,11 @@
 #include <string.h>
 #include <stdbool.h>
 
+// global variables for check_token
+static bool space = 0;
+static bool comment_ignore = 0;
+static int current_line = 0;
+
 /*
 creates a new token with unkown type and appends it in the token linked list
 if the list is not empty and there is not a token provided, the function will not create a new token
@@ -12,6 +17,7 @@ instead it will return NULL
 token* create_token(token* current_token){
     token* new_token = malloc(sizeof(token));
     new_token->type = UNKOWN;
+    new_token->line = -1;
     new_token->value = NULL;
     new_token->next_token = NULL;
 
@@ -35,23 +41,33 @@ token* check_token(char chr, token* current_token){
     if(current_token == NULL){
         fprintf(stderr, "check_token has not recieved a valid token\n");
         return NULL;
+    } else if(comment_ignore == 1){
+        if((chr != '\n') && (chr != ';')){
+            return current_token;
+        }
+        comment_ignore = 0;
     }
+
     switch(chr) {
         // whitespaces 
         case ' ':
-            if(current_token->type != WHITESPACE){
+        space = 1;
+            /*if(current_token->type != WHITESPACE){
                 current_token = create_token(current_token);
+                current_token->line = current_line;
                 current_token->type = WHITESPACE;
                 current_token->value = malloc(sizeof(char));
                 *(current_token->value) = ' ';
-            }
+            }*/
             break;
         
         // \n and ; are recongised as line breaks and are also collapsed into one token if consecutive
         case '\n':
+            current_line++;
         case ';':
         if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
+                current_token->line = current_line;
                 current_token->type = END_OF_LINE;
                 current_token->value = malloc(sizeof(char));
                 *(current_token->value) = ';';
@@ -61,6 +77,7 @@ token* check_token(char chr, token* current_token){
         // normally check_token should not receive \0, this is just a backup
         case '\0':
             current_token = create_token(current_token);
+            current_token->line = current_line;
             current_token->type = END;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = '\0';
@@ -70,6 +87,7 @@ token* check_token(char chr, token* current_token){
         case ',':
         case '.':
             current_token = create_token(current_token);
+            current_token->line = current_line;
             current_token->type = DELIMITER;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
@@ -80,6 +98,7 @@ token* check_token(char chr, token* current_token){
         case '[':
         case '{':
             current_token = create_token(current_token);
+            current_token->line = current_line;
             current_token->type = BRACKET_OPEN;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
@@ -89,14 +108,17 @@ token* check_token(char chr, token* current_token){
         case ']':
         case '}':
             current_token = create_token(current_token);
+            current_token->line = current_line;
             current_token->type = BRACKET_CLOSE;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
             break;
         
-        // comments are done with a # but I consider also allowing C comments
+        // comments are done with a # but I consider also allowing C style comments
         case '#':
+            comment_ignore = 1;
             current_token = create_token(current_token);
+            current_token->line = current_line;
             current_token->type = COMMENT;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
@@ -122,6 +144,7 @@ token* check_token(char chr, token* current_token){
         case '?':
         case ':':
             current_token = create_token(current_token);
+            current_token->line = current_line;
             current_token->type = OPERATOR;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
@@ -134,7 +157,7 @@ token* check_token(char chr, token* current_token){
         case 'a' ... 'z':
         case 'A' ... 'Z':
         case '_':
-            if(current_token->type == INDICATOR){
+            if((current_token->type == INDICATOR) && (space == 0)){
                 size_t len = strlen(current_token->value);
                 if((len % 7) == 0){
                     current_token->value = realloc(current_token->value, len+(8*sizeof(char)));
@@ -142,7 +165,9 @@ token* check_token(char chr, token* current_token){
                 *(current_token->value+len) = chr;
                 *(current_token->value+len+1) = '\0';
             } else {
+                space = 0;
                 current_token = create_token(current_token);
+                current_token->line = current_line;
                 current_token->type = INDICATOR;
                 current_token->value = calloc(8, sizeof(char));
                 *(current_token->value) = chr;
@@ -153,7 +178,7 @@ token* check_token(char chr, token* current_token){
         // the scanning for numbers is the same as with letters
         // they are stored as strings, so the parser has to deal with converting them to real numbers
         case '0' ... '9':
-            if(current_token->type == NUMBER){
+            if((current_token->type == NUMBER) && (space == 0)){
                 size_t len = strlen(current_token->value);
                 if((len % 8) == 0){
                     current_token->value = realloc(current_token->value, len+(9*sizeof(char)));
@@ -161,7 +186,9 @@ token* check_token(char chr, token* current_token){
                 *(current_token->value+len) = chr;
                 *(current_token->value+len+1) = '\0';
             } else {
+                space = 0;
                 current_token = create_token(current_token);
+                current_token->line = current_line;
                 current_token->type = NUMBER;
                 current_token->value = calloc(9, sizeof(char));
                 *(current_token->value) = chr;
@@ -173,6 +200,7 @@ token* check_token(char chr, token* current_token){
         default:
             if(chr){
                 current_token = create_token(current_token);
+                current_token->line = current_line;
                 current_token->type = UNKOWN;
                 current_token->value = malloc(sizeof(char));
                 *(current_token->value) = chr;
@@ -219,6 +247,8 @@ token* get_token(char* buffer){
     // create the end token
     current_token = create_token(current_token);
     current_token->type = END;
+    space = 0;
+    comment_ignore = 0;
     
     if(first_token == NULL){
         fprintf(stderr, "Token list empty\n");

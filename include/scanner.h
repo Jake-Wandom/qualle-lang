@@ -20,6 +20,7 @@ enum token_type {
 typedef struct token {
     enum token_type type;
     char* value;
+    int line;
     struct token* prev_token;
     struct token* next_token;
 } token;
