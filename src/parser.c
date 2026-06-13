@@ -22,6 +22,20 @@ ast* create_node(ast *current_node){
 
 void handle_error(token *error_token, enum error_type type, char *error_message){
     num_of_errors++;
+    token *current_token = error_token;
+
+    switch (type){
+        case UNEXPECTED_ERROR:
+        case WRONG_TYPE_ERROR:
+        case UNKOWN_SYMBOL_ERROR:
+        case NO_CONTEXT_ERROR:
+        case NO_CLONING_ERROR:
+        case NO_CONSUMPTION_ERROR:
+        case MISSING_VARIABLE_ERROR:
+        case NAME_CONFLICT_ERROR:
+    }
+    printf("ERROR: %s\n", error_message);
+    printf("line %i\n\n", error_token->line);
     // locate position
 
 }
