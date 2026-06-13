@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-void print_man_page(){
+void print_man_page(void){
     printf("quallcom does not have a man page yet T_T\n");
 }
 
@@ -19,39 +19,39 @@ void print_token_list(token* first_token){
     while(first_token != NULL){
         switch(first_token->type){
             case INDICATOR:
-                printf("[IND:%s]", first_token->value);
+                printf("[IND %s]", first_token->value);
                 break;
             
             case NUMBER:
-                printf("[NUM:%s]", first_token->value);
+                printf("[NUM %s]", first_token->value);
                 break;
 
             case WHITESPACE:
-                printf("[WHI:%s]", first_token->value);
+                printf("[WHITE]");
                 break;
             
             case END_OF_LINE:
-                printf("[EOL:%s]\n", first_token->value);
+                printf("[EOL %c]\n", *(first_token->value));
                 break;
 
             case DELIMITER:
-                printf("[DEL:%s]", first_token->value);
+                printf("[DEL %c]", *(first_token->value));
                 break;
 
             case COMMENT:
-                printf("[COM:%s]", first_token->value);
+                printf("[COM %c]", *(first_token->value));
                 break;
 
             case BRACKET_CLOSE:
-                printf("[BC:%s]", first_token->value);
+                printf("[BC %c]", *(first_token->value));
                 break;
 
             case BRACKET_OPEN:
-                printf("[BO:%s]", first_token->value);
+                printf("[BO %c]", *(first_token->value));
                 break;
 
             case OPERATOR:
-                printf("[OP:%s]", first_token->value);
+                printf("[OP %c]", *(first_token->value));
                 break;
 
             case END:
@@ -59,8 +59,8 @@ void print_token_list(token* first_token){
                 break;
             
             case UNKOWN:
-                if(first_token->value == NULL) printf("[UNKNOWN]");
-                else printf("[UN:%c]", *(first_token->value));
+                if(first_token->value == NULL) printf("[UN]");
+                else printf("[UN %c]", *(first_token->value));
                 break;
             
             default:
@@ -142,7 +142,8 @@ int main(int argc, char **argv){
     // determine the maximum buffer size
     // we start with the standard lib file size
     fseek(f, 0, SEEK_END);
-    size_t buffer_size = ftell(f);
+    size_t buffer_size = ftell(f) + 1;
+    size_t line_buffer_size = 4096;
     rewind(f);
 
     // now repeat for all other files
@@ -150,56 +151,56 @@ int main(int argc, char **argv){
         fseek(*(files+i), 0, SEEK_END);
         if(ftell(*(files+i)) > buffer_size){
             buffer_size = ftell(*(files+i));
+            buffer_size++;
         }
         rewind(*(files+i));
     }
+    if(print) printf("BUFFER SIZE: %lu\n", buffer_size);
+
     
     // now we process all files into token streams
     char* main_buffer = calloc(buffer_size, sizeof(char));
-    char* line_buffer = calloc(512, sizeof(char));
+    char* line_buffer = calloc(line_buffer_size, sizeof(char));
     token* first_token;
 
     // generate tokens for standard lib
-    while(fgets(line_buffer, 512, f) != NULL){
-        *(line_buffer+511) = '\0';
-        printf("%s", line_buffer);
+    while(fgets(line_buffer, line_buffer_size, f) != NULL){
+        if(print) printf("%s", line_buffer);
         strcat(main_buffer, line_buffer);
     }
-    printf("\n");
+    if(print) printf("\n");
 
     first_token = get_token(main_buffer);
-    if(print == 1){
-        print_token_list(first_token);
-    }
+    if(print) print_token_list(first_token);
+
     // atm for tests, we immediatly free the list
     // in the future we will have to save all lists
     free_token_list(first_token);
 
     // reset buffer
     zero_buffer(main_buffer, buffer_size);
-    zero_buffer(line_buffer, 512);
+    zero_buffer(line_buffer, line_buffer_size);
 
 
     for(int i = 0; i < num_of_files; i++){
-        printf("Content of %i. file:\n",i+1);
-        while(fgets(line_buffer, 512, *(files+i)) != NULL){
-            *(line_buffer+511) = '\0';
-            printf("%s", line_buffer);
+        if(print) printf("Content of %i. file:\n",i+1);
+
+        while(fgets(line_buffer, line_buffer_size, *(files+i)) != NULL){
+            if(print )printf("%s", line_buffer);
             strcat(main_buffer, line_buffer);
         }
-        printf("\n");
+        if(print) printf("\n");
 
         first_token = get_token(main_buffer);
-        if(print == 1){
-            print_token_list(first_token);
-        }
+        if(print) print_token_list(first_token);
+
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists
         free_token_list(first_token);
 
         // reset buffer
         zero_buffer(main_buffer, buffer_size);
-        zero_buffer(line_buffer, 512);
+        zero_buffer(line_buffer, line_buffer_size);
     }
 
     // close all files and free all pointers
