@@ -9,7 +9,7 @@
 enum variable_type {
     VAR_QBIT,
     VAR_BIT,
-    VAR_BOOL,
+    VAR_VECTOR,
     VAR_INTEGER,
     VAR_NATURAL,
     VAR_RATIONAL,
@@ -24,9 +24,7 @@ enum error_type {
     WRONG_TYPE_ERROR,
     UNKOWN_SYMBOL_ERROR,
     NO_CONTEXT_ERROR,
-    NO_CLONING_ERROR,
-    NO_CONSUMPTION_ERROR,
-    MISSING_VARIABLE_ERROR,
+    UNKOWN_TYPE_ERROR,
     NAME_CONFLICT_ERROR
 };
 
@@ -53,12 +51,12 @@ enum boolean_operation_type {
 enum keywords {
     ROOT,
     VAR_DEF,
-    CONDITIONAL,
+    ASSIGN_VAL,
     CONDITION,
     LOOP,
+    INCLUDE,
     FUNC_DEF,
     RETURN,
-    MAIN,
     NOT_DET
 };
 
@@ -67,8 +65,17 @@ enum keywords {
 typedef struct variable {
     enum variable_type type;
     char* name;
-    char* value;
 } variable;
+
+typedef struct assignment {
+    bool var_def;
+    bool operation;
+    variable var;
+    char *value_1;
+
+    ast *operation;
+    char *value_2;
+} assign;
 
 typedef struct boolean_operation {
     enum boolean_operation_type type;
@@ -83,15 +90,16 @@ typedef struct while_loop {
 typedef struct function {
     bool quantum;
     struct abstract_syntax_tree *body;
+    char *name;
     int num_of_variables;
-    variable **variables;
+    variable *variables;
 
 } function;
 
 typedef struct binary_operation {
     enum operation_type type;
-    variable *var_1;
-    variable *var_2;
+    char *value_1;
+    char *value_2;
 } bin_op;
 
 
@@ -100,15 +108,17 @@ typedef struct abstract_syntax_tree {
     enum keywords type;
     struct abstract_syntax_tree *branch;
     union {
-        variable *var;
+        variable var;
         l_while loop;
         function func;
         bin_op op;
+        char *file_path;
     };
 } ast;
 
 
 // returns the root to the generated abstract syntax tree of the given token list
 ast* generate_ast(token *first_token);
+void handle_error(token *error_token, enum error_type type, char *error_message);
 
 #endif
