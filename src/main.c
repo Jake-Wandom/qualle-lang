@@ -1,5 +1,6 @@
 #include "scanner.h"
 #include "parser.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,27 @@ void zero_buffer(char* buffer, size_t size){
     }
 }
 
+void printprefix(int level) {
+    for (int i = 0; i < level - 1; ++i)
+        printf("  ");
+    
+    if (level > 0)
+        printf("- ");
+}
+
+void print_ast(ast *root, int level){
+    /*if (root == NULL)
+        return;
+    
+    // print current level
+    printprefix(level); 
+    printf("%d\n",current_node->data);
+
+    // recurse sub-tree
+    printtree(root->left, level + 1);
+    printtree(root->right, level + 1);*/
+}
+
 void print_token_list(token* first_token){
     while(first_token != NULL){
         switch(first_token->type){
@@ -24,10 +46,6 @@ void print_token_list(token* first_token){
             
             case NUMBER:
                 printf("[NUM %s]", first_token->value);
-                break;
-
-            case WHITESPACE:
-                printf("[WHITE]");
                 break;
             
             case END_OF_LINE:

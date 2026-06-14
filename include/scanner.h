@@ -7,7 +7,6 @@ enum token_type {
     NUMBER,
     OPERATOR,
     COMMENT,
-    WHITESPACE,
     BRACKET_OPEN,
     BRACKET_CLOSE,
     DELIMITER,
