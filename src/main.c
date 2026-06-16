@@ -77,12 +77,12 @@ void print_ast(ast *root, int level){
             print_ast(root->func.body, level+1);
             break;
         case BIN_OP:
-            print_ast(root->cond.operator_a, level+1);
-            print_ast(root->cond.operator_b, level+1);
+            print_ast(root->operation.operator_a, level+1);
+            print_ast(root->operation.operator_b, level+1);
             break;
         case BOOL_OP:
-            print_ast(root->cond.operator_a, level+1);
-            print_ast(root->cond.operator_b, level+1);
+            print_ast(root->condition.operator_a, level+1);
+            print_ast(root->condition.operator_b, level+1);
             break;
         default:
     }
@@ -161,15 +161,19 @@ void free_token_list(token* first_token){
 
 void free_ast(ast *root){
     ast *current_node = root;
+    if(!current_node){
+        return;
+    }
+
     switch(current_node->type){
         case VAR_DEF:
             free(current_node->var.name);
             break;
         case VAR_REF:
-            free(current_node->var_ref);
+            free(current_node->value);
             break;
         case VALUE:
-            free(current_node->val);
+            free(current_node->value);
             break;
         case ASSIGN_VAL:
             free_ast(current_node->assignment.assignee);
@@ -178,19 +182,23 @@ void free_ast(ast *root){
         case FUNC_DEF:
             free_ast(current_node->func.body);
             free(current_node->func.name);
-            free(current_node->func.variables->name);
-            free(current_node->func.variables);
+            free_ast(current_node->func.variables);
+            break;
+        case IF:
+            free_ast(current_node->iff.condition);
+            free_ast(current_node->iff.if_body);
+            free_ast(current_node->iff.else_body);
             break;
         case BIN_OP:
-            free_ast(current_node->op.operator_a);
-            free_ast(current_node->op.operator_b);
+            free_ast(current_node->operation.operator_a);
+            free_ast(current_node->operation.operator_b);
             break;
         case BOOL_OP:
-            free_ast(current_node->cond.operator_a);
-            free_ast(current_node->cond.operator_b);
+            free_ast(current_node->condition.operator_a);
+            free_ast(current_node->condition.operator_b);
             break;
         case INCLUDE:
-            free(current_node->file_path);
+            free(current_node->value);
         default:
     }
     root = current_node->branch;
