@@ -4,6 +4,7 @@
 #include <string.h>
 
 static int num_of_errors = 0;
+static int open_brackets = 0;
 
 ast* create_node(ast *current_node){
     ast *new_node = malloc(sizeof(ast));
@@ -53,58 +54,67 @@ void handle_error(token *error_token, enum error_type type, char *error_message)
 
 }
 
-variable* handle_variable(ast *current_node, token *current_token){
+variable handle_variable(token *current_token){
+    variable var;
+    var.name = NULL;
+    var.type = VAR_UNKOWN;
+
     if(current_token->type != INDICATOR){
         handle_error(current_token, UNEXPECTED_ERROR, "Expected variable type or name");
-        return NULL;
+        return var;
     }
 
-    variable *var = malloc(sizeof(variable));
 
     if(strcmp(current_token->value, "qbit") == 0){
-        var->type = VAR_QBIT;
+        var.type = VAR_QBIT;
     } else if(strcmp(current_token->value, "bit") == 0){
-        var->type = VAR_BIT;
+        var.type = VAR_BIT;
     } else if(strcmp(current_token->value, "N") == 0){
-        var->type = VAR_NATURAL;
+        var.type = VAR_NATURAL;
     } else if(strcmp(current_token->value, "Z") == 0){
-        var->type = VAR_INTEGER;
+        var.type = VAR_INTEGER;
     } else if(strcmp(current_token->value, "Q") == 0){
-        var->type = VAR_RATIONAL;
+        var.type = VAR_RATIONAL;
     } else if(strcmp(current_token->value, "R") == 0){
-        var->type = VAR_IRRATIONAL;
+        var.type = VAR_IRRATIONAL;
     } else if(strcmp(current_token->value, "C") == 0){
-        var->type = VAR_COMPLEX;
+        var.type = VAR_COMPLEX;
     } else if(strcmp(current_token->value, "vector") == 0){
-        var->type = VAR_VECTOR;
+        var.type = VAR_VECTOR;
     } else {
-        return NULL;
+        return var;
     }
 
     current_token = current_token->next_token;
     if(!current_token){
         fprintf(stderr, "Null pointer\n");
-        return NULL;
+        return var;
     }
     if((current_token->type == INDICATOR) && (current_token->value != NULL)){
-        var->name = malloc(strlen(current_token->value)*sizeof(char));
-        var->name = current_token->value;
-    } else {
-        return NULL;
+        printf("TOKEN VALUE:%s, STRLEN: %lu\n\n", current_token->value, strlen(current_token->value));
+        size_t size = strlen(current_token->value)+1;
+        var.name = malloc(size);
+        strcpy(var.name, current_token->value);
+        printf("VAR LEN:%lu, SIZE: %lu\n",strlen(var.name),size);
     }
+
+    return var;
 }
 
 ast* handle_function(bool quantum, ast *current_node, token *current_token){
     current_node = create_node(current_node);
     current_node->type = FUNC_DEF;
     current_node->func.quantum = quantum;
+    current_node->func.name = NULL;
+    current_node->func.num_of_variables = 0;
+    current_node->func.variables = NULL;
 
     current_token = current_token->next_token;
     if(!current_token){
         fprintf(stderr, "Null pointer\n");
         return NULL;
     }
-    if((current_token->type != DELIMITER) || (strcmp(current_token->value, ".") != 0)){
+    if((current_token->type != DELIMITER) || (*(current_token->value) != '.')){
         handle_error(current_token, UNEXPECTED_ERROR, "Expected '.' in function definition");
         return NULL;
     }
@@ -140,7 +150,7 @@ ast* handle_function(bool quantum, ast *current_node, token *current_token){
         fprintf(stderr, "Null pointer\n");
         return NULL;
     }
-    if((current_token->type != BRACKET_OPEN) || (strcmp(current_token->value, "(") != 0)){
+    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '(')){
         handle_error(current_token, UNEXPECTED_ERROR, "Expected '(' in function definition");
         return NULL;
     }
@@ -150,11 +160,50 @@ ast* handle_function(bool quantum, ast *current_node, token *current_token){
         fprintf(stderr, "Null pointer\n");
         return NULL;
     }
+    next_variable:
     if(current_token->type == INDICATOR){
-        
-    } else if((current_token->type == BRACKET_CLOSE) && (strcmp(current_token->value, ")") == 0)){
-        
+        variable var = handle_variable(current_token);
+        if((var.type != VAR_UNKOWN) && (var.name != NULL)){
+            current_node->func.num_of_variables++;
+            realloc(current_node->func.variables, current_node->func.num_of_variables*sizeof(variable));
+            current_node->func.variables[current_node->func.num_of_variables-1] = var;
+
+            current_token = current_token->next_token;
+            if(!current_token){
+                fprintf(stderr, "Null pointer\n");
+                return NULL;
+            }
+            current_token = current_token->next_token;
+            if(!current_token){
+                fprintf(stderr, "Null pointer\n");
+                return NULL;
+            }
+            if((current_token->type == DELIMITER) && (*(current_token->value) == ',')){
+                current_token = current_token->next_token;
+                if(!current_token){
+                    fprintf(stderr, "Null pointer\n");
+                    return NULL;
+                }
+            }
+            goto next_variable;
+        }
+    } else if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) != ')')){
+        current_token = current_token->next_token;
+        if(!current_token){
+            fprintf(stderr, "Null pointer\n");
+            return NULL;
+        }
+    } else {
+        handle_error(current_token, UNEXPECTED_ERROR, "Expected variable definition or ')'");
+        return NULL;
     }
+
+    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
+        handle_error(current_token, UNEXPECTED_ERROR, "Expected '{' in function definition");
+        return NULL;
+    }
+
+    return current_node;
 }
 
 ast* handle_include(ast *current_node, token *current_token){
@@ -185,13 +234,25 @@ ast* handle_include(ast *current_node, token *current_token){
 }
 
 ast* handle_indicator(ast *current_node, token *current_token){
-    variable *var = handle_variable(current_node, current_token);
-    if(var){
+    variable var = handle_variable(current_token);
+    if((var.type != VAR_UNKOWN) && (var.name != NULL)){
         current_node = create_node(current_node);
-        current_node->var.type = var->type;
-        current_node->var.name = malloc(strlen(var->name)*sizeof(char));
-        
+        current_node->type = VAR_DEF;
+        current_node->var.type = var.type;
+
+        size_t size = strlen(var.name)+1;
+        current_node->var.name = malloc(size);
+        strncpy(current_node->var.name, var.name, size);
+    } else if(current_token->type == INDICATOR){
+
     }
+    free(var.name);
+    current_token = current_token->next_token;
+    if(!current_token){
+        fprintf(stderr, "Null pointer\n");
+        return NULL;
+    }
+    return handle_input(current_node, current_token);
 }
 
 ast* handle_loop(bool for_loop, ast *current_nodee, token *current_token){
@@ -204,6 +265,10 @@ ast* handle_loop(bool for_loop, ast *current_nodee, token *current_token){
 
 
 ast* handle_input(ast *current_node, token *current_token){
+    if(!current_token){
+        return current_node;
+    }
+
     switch(current_token->type){
         case INDICATOR:
             if(strcmp(current_token->value, "q") == 0){
@@ -227,19 +292,32 @@ ast* handle_input(ast *current_node, token *current_token){
             }
             break;
 
+        case START:
         case COMMENT:
         case END_OF_LINE:
             current_token = current_token->next_token;
+            if(!current_token){
+                fprintf(stderr, "Null pointer\n");
+                return NULL;
+            }
             return handle_input(current_node, current_token);
             break;
-            
-        case END:
-            return NULL;
-            break;
 
+        case BRACKET_CLOSE:
+            if((open_brackets > 0) && (*(current_token->value) == '}')){
+                open_brackets--;
+            }
+            return handle_input(current_node, current_token);
+            break;
+        
+        case END:
+            return current_node;
+            break;
+        
         default:
             handle_error(current_token, 0, "Not recognised in this context");
     }
+    return current_node;
 }
 
 ast* generate_ast(token *first_token){
@@ -248,15 +326,17 @@ ast* generate_ast(token *first_token){
     root->branch = NULL;
 
     num_of_errors = 0;
-    token *current_token = first_token;
-    ast *current_node = root;
-    while(current_token != NULL){
-        current_node = handle_input(current_node, current_token);
-        if(current_node == NULL){
-            fprintf(stderr, "handle_input returned NULL");
-            break;
-        }
-        current_token = current_token->next_token;
+    open_brackets = 0;
+
+    ast *current_node = handle_input(root, first_token);
+    if(current_node == NULL){
+        fprintf(stderr, "handle_input returned NULL");
+    }
+
+    if(open_brackets > 0){
+        handle_error(first_token, MISSING_ERROR, "Brackets have not been closed");
+    } else if(open_brackets < 0){
+        handle_error(first_token, MISSING_ERROR, "More brackets are closed then opened");
     }
     return root;
 }

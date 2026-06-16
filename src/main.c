@@ -25,16 +25,68 @@ void printprefix(int level) {
 }
 
 void print_ast(ast *root, int level){
-    /*if (root == NULL)
-        return;
+    if (root == NULL) return;
     
     // print current level
-    printprefix(level); 
-    printf("%d\n",current_node->data);
+    printprefix(level);
+    switch(root->type){
+        case ROOT:
+            printf("ROOT\n");
+            break;
+        case VAR_DEF:
+            printf("VAR \n");
+            break;
+        case VAR_REF:
+            printf("REF \n");
+            break;
+        case VALUE:
+            printf("VAL \n");
+            break;
+        case ASSIGN_VAL:
+            printf("ASGN\n");
+            break;
+        case BIN_OP:
+            printf("BIN \n");
+            break;
+        case BOOL_OP:
+            printf("BOOL\n");
+            break;
+        case LOOP:
+            printf("LOOP\n");
+            break;
+        case INCLUDE:
+            printf("INCL\n");
+            break;
+        case FUNC_DEF:
+            printf("FUNC\n");
+            break;
+        case RETURN:
+            printf("RET \n");
+            break;
+        case NOT_DET:
+            printf("UN  \n");
+    }
 
     // recurse sub-tree
-    printtree(root->left, level + 1);
-    printtree(root->right, level + 1);*/
+    switch(root->type){
+        case ASSIGN_VAL:
+            print_ast(root->assignment.assignee, level+1);
+            print_ast(root->assignment.assignor, level+1);
+            break;
+        case FUNC_DEF:
+            print_ast(root->func.body, level+1);
+            break;
+        case BIN_OP:
+            print_ast(root->cond.operator_a, level+1);
+            print_ast(root->cond.operator_b, level+1);
+            break;
+        case BOOL_OP:
+            print_ast(root->cond.operator_a, level+1);
+            print_ast(root->cond.operator_b, level+1);
+            break;
+        default:
+    }
+    print_ast(root->branch, level + 1);
 }
 
 void print_token_list(token* first_token){
@@ -72,8 +124,15 @@ void print_token_list(token* first_token){
                 printf("[OP %c]", *(first_token->value));
                 break;
 
+            case START:
+                printf("\n[START]\n");
+                break;
+
             case END:
-                printf("\n[END]\n\n");
+                if(first_token->prev_token->type != END_OF_LINE){
+                    printf("\n");
+                }
+                printf("[END]\n\n");
                 break;
             
             case UNKOWN:
@@ -97,6 +156,47 @@ void free_token_list(token* first_token){
         }
         first_token = first_token->next_token;
         free(first_token->prev_token);
+    }
+}
+
+void free_ast(ast *root){
+    ast *current_node = root;
+    switch(current_node->type){
+        case VAR_DEF:
+            free(current_node->var.name);
+            break;
+        case VAR_REF:
+            free(current_node->var_ref);
+            break;
+        case VALUE:
+            free(current_node->val);
+            break;
+        case ASSIGN_VAL:
+            free_ast(current_node->assignment.assignee);
+            free_ast(current_node->assignment.assignor);
+            break;
+        case FUNC_DEF:
+            free_ast(current_node->func.body);
+            free(current_node->func.name);
+            free(current_node->func.variables->name);
+            free(current_node->func.variables);
+            break;
+        case BIN_OP:
+            free_ast(current_node->op.operator_a);
+            free_ast(current_node->op.operator_b);
+            break;
+        case BOOL_OP:
+            free_ast(current_node->cond.operator_a);
+            free_ast(current_node->cond.operator_b);
+            break;
+        case INCLUDE:
+            free(current_node->file_path);
+        default:
+    }
+    root = current_node->branch;
+    free(current_node);
+    if(root != NULL){
+        free_ast(root);
     }
 }
 
@@ -212,9 +312,13 @@ int main(int argc, char **argv){
         first_token = get_token(main_buffer);
         if(print) print_token_list(first_token);
 
+        ast* root = generate_ast(first_token);
+        if(print) print_ast(root, 1);
+
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists
         free_token_list(first_token);
+        free_ast(root);
 
         // reset buffer
         zero_buffer(main_buffer, buffer_size);

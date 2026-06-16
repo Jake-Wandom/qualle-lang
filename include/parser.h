@@ -16,7 +16,8 @@ enum variable_type {
     VAR_IRRATIONAL,
     VAR_COMPLEX,
     VAR_CHAR,
-    VAR_STRING
+    VAR_STRING,
+    VAR_UNKOWN
 };
 
 enum error_type {
@@ -25,7 +26,8 @@ enum error_type {
     UNKOWN_SYMBOL_ERROR,
     NO_CONTEXT_ERROR,
     UNKOWN_TYPE_ERROR,
-    NAME_CONFLICT_ERROR
+    NAME_CONFLICT_ERROR,
+    MISSING_ERROR
 };
 
 enum operation_type {
@@ -51,8 +53,11 @@ enum boolean_operation_type {
 enum keywords {
     ROOT,
     VAR_DEF,
+    VAR_REF,
+    VALUE,
     ASSIGN_VAL,
-    CONDITION,
+    BIN_OP,
+    BOOL_OP,
     LOOP,
     INCLUDE,
     FUNC_DEF,
@@ -60,30 +65,31 @@ enum keywords {
     NOT_DET
 };
 
-// struct for variables
-// variables will often be pointers so they can be referenced multiple times in the ast
+
 typedef struct variable {
     enum variable_type type;
     char* name;
 } variable;
 
 typedef struct assignment {
-    bool var_def;
-    bool operation;
-    variable var;
-    char *value_1;
-
-    ast *operation;
-    char *value_2;
+    struct abstract_syntax_tree *assignee;
+    struct abstract_syntax_tree *assignor;
 } assign;
+
+typedef struct binary_operation {
+    enum operation_type type;
+    struct abstract_syntax_tree *operator_a;
+    struct abstract_syntax_tree *operator_b;
+} bin_op;
 
 typedef struct boolean_operation {
     enum boolean_operation_type type;
-
+    struct abstract_syntax_tree *operator_a;
+    struct abstract_syntax_tree *operator_b;
 } condition;
 
 typedef struct while_loop {
-    condition condition;
+    struct abstract_syntax_tree *condition;
     struct abstract_syntax_tree *body;
 } l_while;
 
@@ -96,12 +102,6 @@ typedef struct function {
 
 } function;
 
-typedef struct binary_operation {
-    enum operation_type type;
-    char *value_1;
-    char *value_2;
-} bin_op;
-
 
 // struct for the abstract syntax tree
 typedef struct abstract_syntax_tree {
@@ -112,7 +112,11 @@ typedef struct abstract_syntax_tree {
         l_while loop;
         function func;
         bin_op op;
+        condition cond;
+        assign assignment;
         char *file_path;
+        char *var_ref;
+        char *val;
     };
 } ast;
 
