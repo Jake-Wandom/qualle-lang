@@ -11,6 +11,7 @@ enum token_type {
     BRACKET_CLOSE,
     DELIMITER,
     END_OF_LINE,
+    START,
     END,
     UNKOWN
 };

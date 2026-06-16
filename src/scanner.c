@@ -205,6 +205,8 @@ token* check_token(char chr, token* current_token){
                 current_token->value = malloc(sizeof(char));
                 *(current_token->value) = chr;
                 fprintf(stderr, "unable to recognize character %c,%i\n", chr, chr);
+            } else {
+                fprintf(stderr, "recieved unkown character, unable to read\n");
             }
     }
     return current_token;
@@ -222,7 +224,7 @@ token* get_token(char* buffer){
     //we only have a pointer to the first token and its previous token is always NULL
     token *first_token = NULL;
     first_token = malloc(sizeof(token));
-    first_token->type = UNKOWN;
+    first_token->type = START;
     first_token->prev_token = NULL;
     first_token->next_token = NULL;
     first_token->value = NULL;
@@ -233,11 +235,7 @@ token* get_token(char* buffer){
         return NULL;
     }
 
-    // we generate the first token in the linked list
-    token* current_token = create_token(first_token);
-    if(current_token == NULL){
-        fprintf(stderr, "Something went wrong, while creating the first token\n");
-    }
+    token *current_token = first_token;
     char chr = *buffer;
     while(chr != '\0'){
         current_token = check_token(chr, current_token);
@@ -249,6 +247,7 @@ token* get_token(char* buffer){
     current_token->type = END;
     space = 0;
     comment_ignore = 0;
+    current_line = 0;
     
     if(first_token == NULL){
         fprintf(stderr, "Token list empty\n");
