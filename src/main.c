@@ -31,7 +31,7 @@ int main(int argc, char **argv){
                     print_man_page();
                     return 0;
                 // qir -> generate quantum ir instead of bitcode
-                case 'q':
+                case 'l':
                     qir = 1;
                     break;
                 // optimise -> use optimisation strategies
@@ -75,7 +75,7 @@ int main(int argc, char **argv){
     // now repeat for all other files
     for(int i = 0; i < num_of_files; i++){
         fseek(*(files+i), 0, SEEK_END);
-        if(ftell(*(files+i)) > buffer_size){
+        if(ftell(*(files+i)) > (long)buffer_size){
             buffer_size = ftell(*(files+i));
             buffer_size++;
         }
@@ -90,6 +90,7 @@ int main(int argc, char **argv){
     token* first_token;
 
     // generate tokens for standard lib
+    if(print) printf("FILE CONTENT STDLIB:\n");
     while(fgets(line_buffer, line_buffer_size, f) != NULL){
         if(print) printf("%s", line_buffer);
         strcat(main_buffer, line_buffer);
@@ -101,7 +102,7 @@ int main(int argc, char **argv){
 
     ast* root = generate_ast(first_token);
     if(print) print_ast(root, 1);
-    if(print) printf("\n");
+    if(print) printf("\n\n");
 
     // atm for tests, we immediatly free the list
     // in the future we will have to save all lists
@@ -114,7 +115,7 @@ int main(int argc, char **argv){
 
 
     for(int i = 0; i < num_of_files; i++){
-        if(print) printf("Content of %i. file:\n",i+1);
+        if(print) printf("FILE CONTENT %i. FILE:\n",i+1);
 
         while(fgets(line_buffer, line_buffer_size, *(files+i)) != NULL){
             if(print )printf("%s", line_buffer);
@@ -127,7 +128,7 @@ int main(int argc, char **argv){
 
         root = generate_ast(first_token);
         if(print) print_ast(root, 1);
-        if(print) printf("\n");
+        if(print) printf("\n\n");
 
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists

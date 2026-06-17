@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 void print_man_page(void){
-    printf("quallcom does not have a man page yet T_T\n");
+    printf("quallcom [FLAGS] [FILE] ... [FILE]\n\nFLAGS:\n  -h or --help: print this page\n  -p: print information like file content, token lists and abstract syntax tree\n  -o: activate optimisations\n  -l: generates a readable .ll file instead of bitcode");
 }
 
 void zero_buffer(char* buffer, size_t size){
@@ -96,7 +96,6 @@ void print_ast(ast *root, int level){
             printf("\n    ");
             print_ast(root->condition.operator_b, current_indentation);
             break;
-        default:
     }
 }
 
