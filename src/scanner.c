@@ -7,7 +7,7 @@
 // global variables for check_token
 static bool space = 0;
 static bool comment_ignore = 0;
-static int current_line = 0;
+static int current_line = 1;
 
 /*
 creates a new token with unkown type and appends it in the token linked list
@@ -247,7 +247,7 @@ token* get_token(char* buffer){
     current_token->type = END;
     space = 0;
     comment_ignore = 0;
-    current_line = 0;
+    current_line = 1;
     
     if(first_token == NULL){
         fprintf(stderr, "Token list empty\n");
