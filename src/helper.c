@@ -18,7 +18,7 @@ void printprefix(int level) {
         printf("    ");
     
     if (level > 0)
-        printf(" -> ");
+        printf(" ->");
 }
 
 void print_ast(ast *root, int level){
@@ -30,13 +30,13 @@ void print_ast(ast *root, int level){
         printf("ROOT");
         break;
         case VAR_DEF:
-        printf("VAR ");
+        printf("VAR %s", root->var.name);
         break;
         case VAR_REF:
-        printf("REF ");
+        printf("REF %s",root->value);
         break;
         case VALUE:
-        printf("VAL ");
+        printf("VAL %s", root->value);
         break;
         case ASSIGN_VAL:
         printf("ASGN");
@@ -54,7 +54,7 @@ void print_ast(ast *root, int level){
         printf("INCL");
         break;
         case FUNC_DEF:
-        printf("FUNC");
+        printf("FUNC %s", root->func.name);
         break;
         case RETURN:
         printf("RET ");
@@ -62,6 +62,7 @@ void print_ast(ast *root, int level){
         case NOT_DET:
         printf("UN  ");
         default:
+            break;
     }
     
     print_ast(root->branch, 1);
@@ -70,31 +71,33 @@ void print_ast(ast *root, int level){
     switch(root->type){
         case ASSIGN_VAL:
             current_indentation++;
-            printf("\n    ");
+            printf("\nASSIGNEE: ");
             print_ast(root->assignment.assignee, current_indentation);
-            printf("\n    ");
+            printf("\nASSIGNOR: ");
             print_ast(root->assignment.assignor, current_indentation);
             break;
         case FUNC_DEF:
             current_indentation++;
-            printf("\n    ");
+            printf("\n%s VARIABLES: ",root->func.name);
             print_ast(root->func.variables, current_indentation);
-            printf("\n    ");
+            printf("\n%s BODY: ", root->func.name);
             print_ast(root->func.body, current_indentation);
             break;
         case BIN_OP:
             current_indentation++;
-            printf("\n    ");
+            printf("\nOP_A: ");
             print_ast(root->operation.operator_a, current_indentation);
-            printf("\n    ");
+            printf("\nOP_B: ");
             print_ast(root->operation.operator_b, current_indentation);
             break;
         case BOOL_OP:
             current_indentation++;
-            printf("\n    ");
+            printf("\nOP_A: ");
             print_ast(root->condition.operator_a, current_indentation);
-            printf("\n    ");
+            printf("\nOP_B: ");
             print_ast(root->condition.operator_b, current_indentation);
+            break;
+        default:
             break;
     }
 }
@@ -179,10 +182,9 @@ void free_ast(ast *root){
         case VAR_DEF:
             free(current_node->var.name);
             break;
-        case VAR_REF:
-            free(current_node->value);
-            break;
+        case INCLUDE:
         case VALUE:
+        case VAR_REF:
             free(current_node->value);
             break;
         case ASSIGN_VAL:
@@ -207,9 +209,8 @@ void free_ast(ast *root){
             free_ast(current_node->condition.operator_a);
             free_ast(current_node->condition.operator_b);
             break;
-        case INCLUDE:
-            free(current_node->value);
         default:
+            break;
     }
     root = current_node->branch;
     free(current_node);
