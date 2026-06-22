@@ -44,12 +44,12 @@ BINARY := $(BIN_DIR)/$(TARGET)
 .PHONY: all
 all: $(BINARY)
 $(BINARY): $(OBJS) | $(BIN_DIR)
-	$(CC) $(LDFLAGS) $^ -o $@ $(LIBS)
+	$(CC) $(shell llvm-config --ldflags --libs core) $(LDFLAGS) $^ -o $@ $(LIBS)
 	@echo "Linked -> $@"
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR) $(DEP_DIR)
 	@mkdir -p $(dir $@) $(dir $(DEP_DIR)/$*.d)
-	$(CC) $(CFLAGS) -MMD -MF $(DEP_DIR)/$*.d -c $< -o $@
+	$(CC) $(shell llvm-config --cflags) $(CFLAGS) -MMD -MF $(DEP_DIR)/$*.d -c $< -o $@
 	@echo "Compiled $<"
 
 -include $(DEPS)
