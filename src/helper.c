@@ -29,26 +29,17 @@ void print_ast(ast *root, int level){
         case ROOT:
         printf("ROOT");
         break;
-        case VAR_DEF:
-        printf("VAR %s", root->var.name);
+        case TYPE:
+        printf("TYPE %i", root->var_type);
         break;
-        case VAR_REF:
+        case NAME:
         printf("REF %s",root->value);
         break;
         case VALUE:
         printf("VAL %s", root->value);
         break;
-        case ASSIGN_VAL:
+        case ASSIGN:
         printf("ASGN");
-        break;
-        case BIN_OP:
-        printf("BIN ");
-        break;
-        case BOOL_OP:
-        printf("BOOL");
-        break;
-        case LOOP:
-        printf("LOOP");
         break;
         case INCLUDE:
         printf("INCL");
@@ -69,7 +60,7 @@ void print_ast(ast *root, int level){
     
     // recurse sub-tree
     switch(root->type){
-        case ASSIGN_VAL:
+        case ASSIGN:
             current_indentation++;
             printf("\nASSIGNEE: ");
             print_ast(root->assignment.assignee, current_indentation);
@@ -82,20 +73,6 @@ void print_ast(ast *root, int level){
             print_ast(root->func.variables, current_indentation);
             printf("\n%s BODY: ", root->func.name);
             print_ast(root->func.body, current_indentation);
-            break;
-        case BIN_OP:
-            current_indentation++;
-            printf("\nOP_A: ");
-            print_ast(root->operation.operator_a, current_indentation);
-            printf("\nOP_B: ");
-            print_ast(root->operation.operator_b, current_indentation);
-            break;
-        case BOOL_OP:
-            current_indentation++;
-            printf("\nOP_A: ");
-            print_ast(root->condition.operator_a, current_indentation);
-            printf("\nOP_B: ");
-            print_ast(root->condition.operator_b, current_indentation);
             break;
         default:
             break;
@@ -179,15 +156,12 @@ void free_ast(ast *root){
     }
 
     switch(current_node->type){
-        case VAR_DEF:
-            free(current_node->var.name);
-            break;
         case INCLUDE:
         case VALUE:
-        case VAR_REF:
+        case NAME:
             free(current_node->value);
             break;
-        case ASSIGN_VAL:
+        case ASSIGN:
             free_ast(current_node->assignment.assignee);
             free_ast(current_node->assignment.assignor);
             break;
@@ -195,19 +169,6 @@ void free_ast(ast *root){
             free(current_node->func.name);
             free_ast(current_node->func.body);
             free_ast(current_node->func.variables);
-            break;
-        case IF:
-            free_ast(current_node->iff.condition);
-            free_ast(current_node->iff.if_body);
-            free_ast(current_node->iff.else_body);
-            break;
-        case BIN_OP:
-            free_ast(current_node->operation.operator_a);
-            free_ast(current_node->operation.operator_b);
-            break;
-        case BOOL_OP:
-            free_ast(current_node->condition.operator_a);
-            free_ast(current_node->condition.operator_b);
             break;
         default:
             break;

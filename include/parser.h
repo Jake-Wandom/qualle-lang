@@ -12,11 +12,7 @@ enum variable_type {
     VAR_VECTOR,
     VAR_INTEGER,
     VAR_NATURAL,
-    VAR_RATIONAL,
-    VAR_IRRATIONAL,
-    VAR_COMPLEX,
-    VAR_CHAR,
-    VAR_STRING,
+    VAR_DOUBLE,
     VAR_UNKOWN
 };
 
@@ -30,36 +26,14 @@ enum error_type {
     MISSING_ERROR
 };
 
-enum operation_type {
-    ADDITION,
-    SUBTRACTION,
-    MULTIPLICATION,
-    DIVISION,
-    MOD
-};
-
-enum boolean_operation_type {
-    BOOL_AND,
-    BOOL_OR,
-    BOOL_EQUALS,
-    BOOL_NOT_EQUALS,
-    BOOL_GREATER,
-    BOOL_LESSER,
-    BOOL_GREATER_EQUALS,
-    BOOL_LESSER_EQUALS
-};
 
 // enum for keywords
 enum keywords {
     ROOT,
-    VAR_DEF,
-    VAR_REF,
+    TYPE,
+    NAME,
     VALUE,
-    ASSIGN_VAL,
-    BIN_OP,
-    BOOL_OP,
-    LOOP,
-    IF,
+    ASSIGN,
     INCLUDE,
     FUNC_DEF,
     RETURN,
@@ -67,41 +41,14 @@ enum keywords {
 };
 
 
-typedef struct variable {
-    enum variable_type type;
-    char* name;
-} variable;
 
-typedef struct assignment {
+typedef struct {
     struct abstract_syntax_tree *assignee;
     struct abstract_syntax_tree *assignor;
 } assign;
 
-typedef struct binary_operation {
-    enum operation_type type;
-    struct abstract_syntax_tree *operator_a;
-    struct abstract_syntax_tree *operator_b;
-} bin_op;
 
-typedef struct boolean_operation {
-    enum boolean_operation_type type;
-    struct abstract_syntax_tree *operator_a;
-    struct abstract_syntax_tree *operator_b;
-} bool_op;
-
-typedef struct while_loop {
-    struct abstract_syntax_tree *condition;
-    struct abstract_syntax_tree *body;
-} l_while;
-
-typedef struct if_conditional {
-    struct abstract_syntax_tree *condition;
-    struct abstract_syntax_tree *if_body;
-    struct abstract_syntax_tree *else_body;
-} if_cond;
-
-typedef struct function {
-    bool quantum;
+typedef struct {
     char *name;
     struct abstract_syntax_tree *body;
     struct abstract_syntax_tree *variables;
@@ -114,12 +61,8 @@ typedef struct abstract_syntax_tree {
     enum keywords type;
     struct abstract_syntax_tree *branch;
     union {
-        variable var;
-        l_while loop;
-        if_cond iff;
+        enum variable_type var_type;
         function func;
-        bin_op operation;
-        bool_op condition;
         assign assignment;
         char *value;
     };

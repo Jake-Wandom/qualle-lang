@@ -1,6 +1,6 @@
 #include "analyser.h"
 #include <stdlib.h>
-
+/*
 variable *variable_list;
 function *function_list;
 
@@ -58,3 +58,4 @@ void analyse_ast(ast *root){
 
 
 }
+    */
