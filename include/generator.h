@@ -4,7 +4,7 @@
 #include "parser.h"
 #include <stdio.h>
 
-FILE* generate_llvm();
-FILE* generate_bitcode(ast *root);
+
+FILE* generate_QIR(bool bitcode, ast *root);
 
 #endif

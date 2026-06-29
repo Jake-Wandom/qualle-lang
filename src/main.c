@@ -1,7 +1,7 @@
 #include "helper.h"
 #include "scanner.h"
 #include "parser.h"
-
+#include "generator.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,6 +103,9 @@ int main(int argc, char **argv){
     ast* root = generate_ast(first_token);
     if(print) print_ast(root, 1);
     if(print) printf("\n\n");
+
+    if(qir) generate_QIR(0, root);
+    generate_QIR(1, root);
 
     // atm for tests, we immediatly free the list
     // in the future we will have to save all lists
