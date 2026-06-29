@@ -71,6 +71,7 @@ typedef struct abstract_syntax_tree {
 
 // returns the root to the generated abstract syntax tree of the given token list
 ast* parse_start(ast *current_node);
+ast* parse_assignor(ast *current_node);
 ast* generate_ast(token *first_token);
 void handle_error(token *error_token, enum error_type type, char *error_message);
 

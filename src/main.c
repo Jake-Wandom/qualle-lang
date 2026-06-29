@@ -1,6 +1,7 @@
 #include "helper.h"
 #include "scanner.h"
 #include "parser.h"
+#include "generator.h"
 
 
 #include <stdio.h>
@@ -58,21 +59,12 @@ int main(int argc, char **argv){
         }
     }
 
-    // we compile the standard library and compile it before
-    FILE *f = fopen(stdlib_path, "r+");
-    if(f == NULL){
-        fprintf(stderr, "Could not find or failed to open standard library at %s\n", stdlib_path);
-        return 1;
-    }
-
     // determine the maximum buffer size
-    // we start with the standard lib file size
-    fseek(f, 0, SEEK_END);
-    size_t buffer_size = ftell(f) + 1;
+    // we start with the 0
+    size_t buffer_size = 0;
     size_t line_buffer_size = 4096;
-    rewind(f);
 
-    // now repeat for all other files
+    // now repeat for all files
     for(int i = 0; i < num_of_files; i++){
         fseek(*(files+i), 0, SEEK_END);
         if(ftell(*(files+i)) > (long)buffer_size){
@@ -81,38 +73,13 @@ int main(int argc, char **argv){
         }
         rewind(*(files+i));
     }
-    if(print) printf("BUFFER SIZE: %lu\n", buffer_size);
+    if(print) printf("BUFFER SIZE: %lu, %lu\n", buffer_size, line_buffer_size);
 
     
     // now we process all files into token streams
     char* main_buffer = calloc(buffer_size, sizeof(char));
     char* line_buffer = calloc(line_buffer_size, sizeof(char));
     token* first_token;
-
-    // generate tokens for standard lib
-    if(print) printf("FILE CONTENT STDLIB:\n");
-    while(fgets(line_buffer, line_buffer_size, f) != NULL){
-        if(print) printf("%s", line_buffer);
-        strcat(main_buffer, line_buffer);
-    }
-    if(print) printf("\n");
-
-    first_token = get_token(main_buffer);
-    if(print) print_token_list(first_token);
-
-    ast* root = generate_ast(first_token);
-    if(print) print_ast(root, 1);
-    if(print) printf("\n\n");
-
-    // atm for tests, we immediatly free the list
-    // in the future we will have to save all lists
-    free_token_list(first_token);
-    free_ast(root);
-
-    // reset buffer
-    zero_buffer(main_buffer, buffer_size);
-    zero_buffer(line_buffer, line_buffer_size);
-
 
     for(int i = 0; i < num_of_files; i++){
         if(print) printf("FILE CONTENT %i. FILE:\n",i+1);
@@ -126,7 +93,7 @@ int main(int argc, char **argv){
         first_token = get_token(main_buffer);
         if(print) print_token_list(first_token);
 
-        root = generate_ast(first_token);
+        token *root = generate_ast(first_token);
         if(print) print_ast(root, 1);
         if(print) printf("\n\n");
 

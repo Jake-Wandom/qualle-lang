@@ -33,6 +33,8 @@ FILE *generate_bitcode(ast *root){
     LLVMDumpModule(mod);  // prints IR to stderr
 
     // Write bitcode
+    char *error;
+    LLVMPrintModuleToFile(mod, "output.ll", error);
     LLVMWriteBitcodeToFile(mod, "output.bc");
 
     LLVMDisposeBuilder(builder);
