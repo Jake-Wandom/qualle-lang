@@ -92,10 +92,13 @@ int main(int argc, char **argv){
 
         first_token = get_token(main_buffer);
         if(print) print_token_list(first_token);
+        
+        ast *root = generate_ast(first_token);
 
-        token *root = generate_ast(first_token);
         if(print) print_ast(root, 1);
         if(print) printf("\n\n");
+
+        generate_QIR(0, root);
 
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists

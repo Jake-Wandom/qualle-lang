@@ -36,7 +36,7 @@ void print_ast(ast *root, int level){
         printf("├── VALUE: %s\n", root->value);
         break;
         case ASSIGN:
-        printf("├── ASSIGN: %c\n", root->value);
+        printf("├── ASSIGN: %c\n", *(root->value));
         break;
         case INCLUDE:
         printf("├── INCLUDE: %s\n", root->value);
@@ -150,33 +150,30 @@ void free_token_list(token* first_token){
 }
 
 void free_ast(ast *root){
-    ast *current_node = root;
-    if(!current_node){
+    if(!root){
         return;
     }
 
-    switch(current_node->type){
+    switch(root->type){
         case INCLUDE:
         case VALUE:
         case NAME:
-            free(current_node->value);
+            free(root->value);
             break;
         case ASSIGN:
-            free_ast(current_node->assignment.assignee);
-            free_ast(current_node->assignment.assignor);
-            free(current_node->value);
+            free_ast(root->assignment.assignee);
+            free_ast(root->assignment.assignor);
+            //free(root->value);
             break;
         case FUNC_DEF:
-            free(current_node->func.name);
-            free_ast(current_node->func.body);
-            free_ast(current_node->func.variables);
+            free(root->func.name);
+            free_ast(root->func.body);
+            free_ast(root->func.variables);
             break;
         default:
             break;
     }
-    root = current_node->branch;
-    free(current_node);
-    if(root != NULL){
-        free_ast(root);
-    }
+    ast *next = root->branch;
+    free(root);
+    free_ast(next);
 }
