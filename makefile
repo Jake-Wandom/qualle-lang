@@ -10,7 +10,7 @@ DEP_DIR := build/dep
 
 # Compiler and Flags
 CC := gcc
-CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wstrict-prototypes -I$(INC_DIR) # removed -Wmissing-prototypes
+CFLAGS := -fPIC -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wstrict-prototypes -I$(INC_DIR) # removed -Wmissing-prototypes
 LDFLAGS := 
 LIBS :=
 
@@ -87,6 +87,10 @@ info:
 	@echo "Binary: $(BINARY)"
 	@echo "Sources: $(SRCS)"
 	@echo "CFLAGS: $(CFLAGS)"
+
+.PHONY: shared
+shared:
+	gcc -shared -fPIC -o include/lib-quallcom.so $(OBJS)
 
 # Directory Creation
 $(BIN_DIR) $(OBJ_DIR) $(DEP_DIR):
