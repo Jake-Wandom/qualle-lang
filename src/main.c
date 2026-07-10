@@ -1,6 +1,7 @@
 #include "helper.h"
 #include "scanner.h"
 #include "parser.h"
+#include "analyser.h"
 #include "generator.h"
 
 
@@ -75,7 +76,6 @@ int main(int argc, char **argv){
     }
     if(print) printf("BUFFER SIZE: %lu, %lu\n", buffer_size, line_buffer_size);
 
-    
     // now we process all files into token streams
     char* main_buffer = calloc(buffer_size, sizeof(char));
     char* line_buffer = calloc(line_buffer_size, sizeof(char));
@@ -98,7 +98,9 @@ int main(int argc, char **argv){
         if(print) print_ast(root, 1);
         if(print) printf("\n\n");
 
-        generate_QIR(0, root);
+        analyse_ast(root);
+        if(qir) generate_QIR(0, root);
+        else generate_QIR(1, root);
 
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists

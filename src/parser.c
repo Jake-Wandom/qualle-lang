@@ -9,7 +9,7 @@ static bool in_assign = 0;
 static ast *last_eol;
 
 ast* create_node(ast *current_node){
-    ast *new_node = malloc(sizeof(ast));
+    ast *new_node = calloc(1, sizeof(ast));
     new_node->type = NOT_DET;
     new_node->branch = NULL;
     new_node->value = NULL;
@@ -102,9 +102,10 @@ ast* parse_function(ast *current_node){
     switch_token(1);
 
     // create subtree with all variables
-    ast *new_node = malloc(sizeof(ast));
+    ast *new_node = calloc(1, sizeof(ast));
     new_node->type = ROOT;
     new_node->branch = NULL;
+    new_node->value = NULL;
     current_node->func.variables = new_node;
 
     parse_start(new_node);
@@ -132,9 +133,10 @@ ast* parse_function(ast *current_node){
 
     switch_token(1);
 
-    ast *second_node = malloc(sizeof(ast));
+    ast *second_node = calloc(1, sizeof(ast));
     second_node->type = ROOT;
     second_node->branch = NULL;
+    second_node->value = NULL;
     current_node->func.body = second_node;
 
     parse_start(second_node);
@@ -167,7 +169,7 @@ ast* parse_include(ast *current_node){
     current_node->type = INCLUDE;
     
     size_t size = strlen(current_token->value)+1;
-    current_node->value = malloc(size);
+    current_node->value = calloc(1, size);
     strncpy(current_node->value, current_token->value, size);
     
     switch_token(1);
@@ -237,7 +239,7 @@ ast* parse_indicator(ast *current_node){
     current_node = create_node(current_node);
     current_node->type = NAME;
     size_t size = strlen(current_token->value)+1;
-    current_node->value = malloc(size);
+    current_node->value = calloc(1, size);
     strncpy(current_node->value, current_token->value, size);
 
     switch_token(1);
@@ -270,7 +272,7 @@ ast* parse_number(ast *current_node){
     current_node = create_node(current_node);
     current_node->type = VALUE;
     size_t size = strlen(current_token->value)+1;
-    current_node->value = malloc(size);
+    current_node->value = calloc(1, size);
     strncpy(current_node->value, current_token->value, size);
 
     switch_token(1);
@@ -280,7 +282,7 @@ ast* parse_number(ast *current_node){
 
 ast *parse_operator(ast *current_node){
     ast *assignee = last_eol->branch;
-    ast *assignor = malloc(sizeof(ast));
+    ast *assignor = calloc(1, sizeof(ast));
     assignor->type = ROOT;
     assignor->branch = NULL;
     assignor->value = NULL;
@@ -379,9 +381,10 @@ ast* parse_start(ast *current_node){
 }
 
 ast* generate_ast(token *first_token){
-    ast *root = malloc(sizeof(ast));
+    ast *root = calloc(1, sizeof(ast));
     root->type = ROOT;
     root->branch = NULL;
+    root->value = NULL;
 
     num_of_errors = 0;
     in_assign = 0;
