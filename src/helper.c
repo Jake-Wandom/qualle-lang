@@ -11,95 +11,72 @@ void zero_buffer(char* buffer, size_t size){
     }
 }
 
-static int current_indentation = 1;
-
 void printprefix(int level) {
     for (int i = 0; i < level - 1; ++i)
-        printf("    ");
-    
-    if (level > 0)
-        printf(" ->");
+        printf("|  ");
 }
 
 void print_ast(ast *root, int level){
     if (root == NULL) return;
     // print current level
-    printprefix(level);
+    if((level > 1) && (root->type != ROOT)) printprefix(level);
     switch(root->type){
         case ROOT:
-        printf("ROOT");
-        break;
-        case VAR_DEF:
-        printf("VAR %s", root->var.name);
-        break;
-        case VAR_REF:
-        printf("REF %s",root->value);
-        break;
+            if(level == 1){
+                printf("├─> ROOT\n");
+            }
+            break;
+        case TYPE:
+            printf("├── TYPE: %i\n", root->var_type);
+            break;
+        case NAME:
+            printf("├── NAME: %s\n",root->value);
+            break;
         case VALUE:
-        printf("VAL %s", root->value);
+        printf("├── VALUE: %s\n", root->value);
         break;
-        case ASSIGN_VAL:
-        printf("ASGN");
-        break;
-        case BIN_OP:
-        printf("BIN ");
-        break;
-        case BOOL_OP:
-        printf("BOOL");
-        break;
-        case LOOP:
-        printf("LOOP");
+        case ASSIGN:
+        printf("├── ASSIGN: %c\n", *(root->value));
         break;
         case INCLUDE:
-        printf("INCL");
+        printf("├── INCLUDE: %s\n", root->value);
         break;
         case FUNC_DEF:
-        printf("FUNC %s", root->func.name);
+        printf("├── FUNCTION: %s\n", root->func.name);
         break;
         case RETURN:
-        printf("RET ");
+        printf("├── RETURN\n");
         break;
         case NOT_DET:
-        printf("UN  ");
+        printf("├── UNKNOWN\n");
         default:
             break;
     }
     
-    print_ast(root->branch, 1);
     
     // recurse sub-tree
     switch(root->type){
-        case ASSIGN_VAL:
-            current_indentation++;
-            printf("\nASSIGNEE: ");
-            print_ast(root->assignment.assignee, current_indentation);
-            printf("\nASSIGNOR: ");
-            print_ast(root->assignment.assignor, current_indentation);
-            break;
+        case ASSIGN:
+        printprefix(level+1);
+        printf("├─> Assignee:\n");
+        print_ast(root->assignment.assignee, level+1);
+        printprefix(level+1);
+        printf("├─> Assignor:\n");
+        print_ast(root->assignment.assignor, level+1);
+        break;
         case FUNC_DEF:
-            current_indentation++;
-            printf("\n%s VARIABLES: ",root->func.name);
-            print_ast(root->func.variables, current_indentation);
-            printf("\n%s BODY: ", root->func.name);
-            print_ast(root->func.body, current_indentation);
-            break;
-        case BIN_OP:
-            current_indentation++;
-            printf("\nOP_A: ");
-            print_ast(root->operation.operator_a, current_indentation);
-            printf("\nOP_B: ");
-            print_ast(root->operation.operator_b, current_indentation);
-            break;
-        case BOOL_OP:
-            current_indentation++;
-            printf("\nOP_A: ");
-            print_ast(root->condition.operator_a, current_indentation);
-            printf("\nOP_B: ");
-            print_ast(root->condition.operator_b, current_indentation);
-            break;
+        printprefix(level+1);
+        printf("├─> Parameters:\n");
+        print_ast(root->func.variables, level+1);
+        printprefix(level+1);
+        printf("├─> Body:\n");
+        print_ast(root->func.body, level+1);
+        break;
         default:
-            break;
+        break;
     }
+
+    print_ast(root->branch, level);
 }
 
 void print_token_list(token* first_token){
@@ -173,48 +150,30 @@ void free_token_list(token* first_token){
 }
 
 void free_ast(ast *root){
-    ast *current_node = root;
-    if(!current_node){
+    if(!root){
         return;
     }
 
-    switch(current_node->type){
-        case VAR_DEF:
-            free(current_node->var.name);
-            break;
+    switch(root->type){
         case INCLUDE:
         case VALUE:
-        case VAR_REF:
-            free(current_node->value);
+        case NAME:
+            free(root->value);
             break;
-        case ASSIGN_VAL:
-            free_ast(current_node->assignment.assignee);
-            free_ast(current_node->assignment.assignor);
+        case ASSIGN:
+            free_ast(root->assignment.assignee);
+            free_ast(root->assignment.assignor);
+            //free(root->value);
             break;
         case FUNC_DEF:
-            free(current_node->func.name);
-            free_ast(current_node->func.body);
-            free_ast(current_node->func.variables);
-            break;
-        case IF:
-            free_ast(current_node->iff.condition);
-            free_ast(current_node->iff.if_body);
-            free_ast(current_node->iff.else_body);
-            break;
-        case BIN_OP:
-            free_ast(current_node->operation.operator_a);
-            free_ast(current_node->operation.operator_b);
-            break;
-        case BOOL_OP:
-            free_ast(current_node->condition.operator_a);
-            free_ast(current_node->condition.operator_b);
+            free(root->func.name);
+            free_ast(root->func.body);
+            free_ast(root->func.variables);
             break;
         default:
             break;
     }
-    root = current_node->branch;
-    free(current_node);
-    if(root != NULL){
-        free_ast(root);
-    }
+    ast *next = root->branch;
+    free(root);
+    free_ast(next);
 }

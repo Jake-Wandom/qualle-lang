@@ -3,6 +3,12 @@
 
 #include "parser.h"
 
+typedef struct {
+    enum variable_type type;
+    char *name;
+    int value;
+} variable;
+
 void analyse_ast(ast *root);
 
 #endif

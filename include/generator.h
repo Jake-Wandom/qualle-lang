@@ -3,8 +3,23 @@
 
 #include "parser.h"
 #include <stdio.h>
+#include <llvm-c/Core.h>
 
+enum quantum_functions {
+    HADAMARD,
+    CNOT,
+    X,
+    Y,
+    Z,
+    MEASURE
+};
 
-FILE* generate_QIR(bool bitcode, ast *root);
+typedef struct {
+    LLVMContextRef context;
+    LLVMModuleRef module;
+    LLVMBuilderRef builder;
+} qir_context;
+
+FILE *generate_QIR(bool bitcode, ast *root);
 
 #endif
