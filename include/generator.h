@@ -1,18 +1,9 @@
 #ifndef H_GENERATOR_QUALLE
 #define H_GENERATOR_QUALLE
 
-#include "parser.h"
+#include "analyser.h"
 #include <stdio.h>
 #include <llvm-c/Core.h>
-
-enum quantum_functions {
-    HADAMARD,
-    CNOT,
-    X,
-    Y,
-    Z,
-    MEASURE
-};
 
 typedef struct {
     LLVMContextRef context;
@@ -20,6 +11,6 @@ typedef struct {
     LLVMBuilderRef builder;
 } qir_context;
 
-FILE *generate_QIR(bool bitcode, ast *root);
+FILE *generate_QIR(bool bitcode, instruction *start);
 
 #endif

@@ -1,2 +1,2 @@
-qbit abc = 0;
-H(abc);
+qbit q = 0;
+H(q);
