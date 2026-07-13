@@ -65,7 +65,7 @@ token* check_token(char chr, token* current_token){
         case '\n':
             current_line++;
         case ';':
-        if(current_token->type != END_OF_LINE){
+            if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
                 current_token->line = current_line;
                 current_token->type = END_OF_LINE;

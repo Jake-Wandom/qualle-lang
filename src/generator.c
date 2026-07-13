@@ -10,23 +10,6 @@
 #define QIR_MINOR_VERSION 0
 #define ADAPTIVE 0
 
-LLVMValueRef add_var(LLVMContextRef context, enum variable_type type, unsigned long long value){
-    LLVMValueRef var;
-    switch(type){
-        case VAR_QBIT:
-            
-            break;
-        case VAR_BIT:
-            
-            break;
-        case VAR_INTEGER:
-            
-            break;
-        default:
-    }
-    return var;
-}
-
 void call_function(qir_context qir, LLVMValueRef *args, enum quantum_functions f){
     LLVMTypeRef void_type = LLVMVoidTypeInContext(qir.context);
     LLVMTypeRef ptr_type = LLVMPointerTypeInContext(qir.context, 0);
@@ -40,7 +23,12 @@ void call_function(qir_context qir, LLVMValueRef *args, enum quantum_functions f
             num_args = 1;
             f_type = LLVMFunctionType(void_type, h_param, 1, 0);
             f_call = LLVMAddFunction(qir.module, "__quantum__qis__h__body", f_type);
-
+            break;
+        case INIT:
+            LLVMTypeRef init_param[1] = { ptr_type };
+            num_args = 1;
+            f_type = LLVMFunctionType(void_type, init_param, 1, 0);
+            f_call = LLVMAddFunction(qir.module, "__quantum__rt__initialize", f_type);
             break;
         default:
             fprintf(stderr, "UNKOWN QUANTUM FUNCTION!\n");
@@ -48,30 +36,42 @@ void call_function(qir_context qir, LLVMValueRef *args, enum quantum_functions f
     LLVMBuildCall2(qir.builder, f_type, f_call, args, num_args, "");
 }
 
-LLVMValueRef *vari = NULL;
-
-int walk_tree(qir_context qir, ast *node){
-    if(node == NULL){
-        return 0;
-    }
-
-    LLVMTypeRef void_type = LLVMVoidTypeInContext(qir.context);
-    LLVMTypeRef ptr_type = LLVMPointerTypeInContext(qir.context, 0);
-
-    switch(node->type){
-        case ASSIGN:
-            
-            break;
-        case NAME:
-            
-            break;
+LLVMValueRef add_var(qir_context qir, enum variable_type type, unsigned long long value){
+    switch(type){
+        case VAR_QBIT:
+            return LLVMConstPointerNull(LLVMPointerTypeInContext(qir.context,0));
+        case VAR_BIT:
+            return LLVMConstInt(LLVMInt1TypeInContext(qir.context), value, 0);
+        case VAR_INTEGER:
+            return LLVMConstInt(LLVMInt32TypeInContext(qir.context), value, 0);
         default:
+            return NULL;
     }
-    walk_tree(qir, node->branch);
-    return 0;
 }
 
-FILE *generate_QIR(bool bitcode, ast *root){
+void generate_instructions(qir_context qir, instruction *start){
+    while(start != NULL){
+        switch(start->type){
+            case DEFINE_VAR:
+                printf("define var %s\n", start->var->name);
+                start->var->llvm = add_var(qir, start->var->type, start->var->value);
+                break;
+            case CALL_Q_FUNC:
+                printf("call qfunc %s\n", start->func.parameter[0]->name);
+                LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * start->func.num_of_param);
+                for(int i = 0; i < start->func.num_of_param; i++){
+                    args[i] = start->func.parameter[i]->llvm;
+                }
+                call_function(qir, args, start->q_func);
+                break;
+            default:
+            
+        }
+        start = start->next_instr;
+    }
+}
+
+FILE *generate_QIR(bool bitcode, instruction *start){
     // setup for var_array and qir_context
     LLVMValueRef *var_array;
     qir_context qir;
@@ -88,15 +88,10 @@ FILE *generate_QIR(bool bitcode, ast *root){
 
 
     // define basic functions
-    // init function
-    LLVMTypeRef init_param[1] = { ptr_type };
-    LLVMTypeRef init_type = LLVMFunctionType(void_type, init_param, 1, 0);
-    LLVMValueRef init_function = LLVMAddFunction(qir.module, "__quantum__rt__initialize", init_type);
-
     // main function
     LLVMTypeRef main_type = LLVMFunctionType(void_type, NULL, 0, 0);
     LLVMValueRef main_function = LLVMAddFunction(qir.module, "main", main_type);
-
+    
     // measure function
     LLVMTypeRef measure_param[2] = {ptr_type, ptr_type};
     LLVMTypeRef measure_type = LLVMFunctionType(void_type, measure_param, 2, 0);
@@ -112,22 +107,13 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(qir.context, main_function, "entry");
     LLVMPositionBuilderAtEnd(qir.builder, entry);
 
-    // initialize qubits
     
-    // TODO
-    
-    /*
-    int ret = walk_tree(context, root);
-    if(ret == -1){
-        fprintf(stderr, "error while generating\n");
-        return NULL;
-    }
-    */
-
+    generate_instructions(qir, start);
     LLVMValueRef var = LLVMConstPointerNull(ptr_type);
     LLVMValueRef res = LLVMConstPointerNull(ptr_type);
     LLVMValueRef mz[2] = {var, res};
 
+    call_function(qir, &var, INIT);
     call_function(qir, &var, HADAMARD);
 
     LLVMBuildCall2(qir.builder, measure_type, measure_function, mz, 2, "");
@@ -152,8 +138,11 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, resultsAttribute);
 
     // measurement attribute
+    unsigned kind = LLVMGetEnumAttributeKindForName("writeonly", 9);
     LLVMAttributeRef irrevAttribute = LLVMCreateStringAttribute(qir.context, "irreversible", 12, "", 0);
-
+    LLVMAttributeRef writeonlyAttribute = LLVMCreateEnumAttribute(qir.context, kind, 0);
+    
+    LLVMAddAttributeAtIndex(measure_function, 2, writeonlyAttribute);
     LLVMAddAttributeAtIndex(measure_function, LLVMAttributeFunctionIndex, irrevAttribute);
 
 
@@ -192,7 +181,6 @@ FILE *generate_QIR(bool bitcode, ast *root){
         fprintf(stderr, "Unable to open output file\n");
         return NULL;
     }
-    free(vari);
     LLVMDisposeBuilder(qir.builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);

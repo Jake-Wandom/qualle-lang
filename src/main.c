@@ -10,7 +10,7 @@
 #include <stdbool.h>
 
 int main(int argc, char **argv){
-    bool qir = 0;
+    bool ll = 0;
     bool optimisation = 0;
     bool print = 0;
     char stdlib_path[] = "include/stdlib.ql";
@@ -33,7 +33,7 @@ int main(int argc, char **argv){
                     return 0;
                 // qir -> generate quantum ir instead of bitcode
                 case 'l':
-                    qir = 1;
+                    ll = 1;
                     break;
                 // optimise -> use optimisation strategies
                 case 'o':
@@ -80,31 +80,6 @@ int main(int argc, char **argv){
     char* line_buffer = calloc(line_buffer_size, sizeof(char));
     token* first_token;
 
-    // generate tokens for standard lib
-    if(print) printf("FILE CONTENT STDLIB:\n");
-    while(fgets(line_buffer, line_buffer_size, f) != NULL){
-        if(print) printf("%s", line_buffer);
-        strcat(main_buffer, line_buffer);
-    }
-    if(print) printf("\n");
-
-    first_token = get_token(main_buffer);
-    if(print) print_token_list(first_token);
-
-    ast* root = generate_ast(first_token);
-    if(print) print_ast(root, 1);
-    if(print) printf("\n\n");
-
-    // atm for tests, we immediatly free the list
-    // in the future we will have to save all lists
-    free_token_list(first_token);
-    free_ast(root);
-
-    // reset buffer
-    zero_buffer(main_buffer, buffer_size);
-    zero_buffer(line_buffer, line_buffer_size);
-
-
     for(int i = 0; i < num_of_files; i++){
         if(print) printf("FILE CONTENT %i. FILE:\n",i+1);
 
@@ -122,14 +97,18 @@ int main(int argc, char **argv){
         if(print) print_ast(root, 1);
         if(print) printf("\n\n");
 
-        analyse_ast(root);
-        if(qir) generate_QIR(0, root);
-        else generate_QIR(1, root);
+        instruction *start = analyse_ast(root);
+        print_instructions(start);
+        
+
+        if(ll) generate_QIR(0, start);
+        else generate_QIR(1, start);
 
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists
         free_token_list(first_token);
         free_ast(root);
+        free_instructions(start);
 
         // reset buffer
         zero_buffer(main_buffer, buffer_size);

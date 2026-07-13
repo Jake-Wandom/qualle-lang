@@ -13,6 +13,7 @@ enum variable_type {
     VAR_INTEGER,
     VAR_NATURAL,
     VAR_DOUBLE,
+    VAR_VOID,
     VAR_UNKOWN
 };
 
@@ -43,15 +44,15 @@ enum keywords {
 
 
 typedef struct {
-    struct abstract_syntax_tree *assignee;
-    struct abstract_syntax_tree *assignor;
+    struct abstract_syntax_tree *left;
+    struct abstract_syntax_tree *right;
 } assign;
 
 
 typedef struct {
     char *name;
     struct abstract_syntax_tree *body;
-    struct abstract_syntax_tree *variables;
+    struct abstract_syntax_tree *param;
 
 } function;
 
@@ -63,7 +64,7 @@ typedef struct abstract_syntax_tree {
     union {
         enum variable_type var_type;
         function func;
-        assign assignment;
+        assign assign;
         char *value;
     };
 } ast;

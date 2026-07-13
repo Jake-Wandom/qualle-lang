@@ -77,7 +77,7 @@ ast* parse_function(ast *current_node){
     current_node = create_node(current_node);
     current_node->type = FUNC_DEF;
     current_node->func.name = NULL;
-    current_node->func.variables = NULL;
+    current_node->func.param = NULL;
 
     switch_token(1);
 
@@ -102,14 +102,15 @@ ast* parse_function(ast *current_node){
     switch_token(1);
 
     // create subtree with all variables
-    ast *new_node = calloc(1, sizeof(ast));
-    new_node->type = ROOT;
-    new_node->branch = NULL;
-    new_node->value = NULL;
-    current_node->func.variables = new_node;
-
-    parse_start(new_node);
+    ast *temp_node = calloc(1, sizeof(ast));
+    temp_node->type = ROOT;
+    temp_node->branch = NULL;
+    temp_node->value = NULL;
     
+    parse_start(temp_node);
+    
+    current_node->func.param = temp_node->branch;
+
     // we need to forward to the end of the function definition
     while(current_token != NULL){
         if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == ')')){
@@ -133,13 +134,13 @@ ast* parse_function(ast *current_node){
 
     switch_token(1);
 
-    ast *second_node = calloc(1, sizeof(ast));
-    second_node->type = ROOT;
-    second_node->branch = NULL;
-    second_node->value = NULL;
-    current_node->func.body = second_node;
-
-    parse_start(second_node);
+    temp_node->branch = NULL;
+    temp_node->value = NULL;
+    
+    parse_start(temp_node);
+    
+    current_node->func.body = temp_node->branch;
+    free(temp_node);
 
     // we need to forward to the end of the function body
     while(current_token != NULL){
@@ -281,28 +282,28 @@ ast* parse_number(ast *current_node){
 }
 
 ast *parse_operator(ast *current_node){
-    ast *assignee = last_eol->branch;
-    ast *assignor = calloc(1, sizeof(ast));
-    assignor->type = ROOT;
-    assignor->branch = NULL;
-    assignor->value = NULL;
+    ast *left = last_eol->branch;
+   ast *temp_node = calloc(1, sizeof(ast));
+    temp_node->type = ROOT;
+    temp_node->branch = NULL;
+    temp_node->value = NULL;
 
 
     last_eol->branch = NULL;
     current_node = create_node(last_eol);
     current_node->type = ASSIGN;
-    //current_node->value = malloc(1);
-    //*(current_node->value) = *(current_token->value);
-    //printf("val: %c\n", *(current_token->value));
 
-    current_node->assignment.assignee = assignee;
-    current_node->assignment.assignor = assignor;
-
+    current_node->assign.left = left;
+    
     switch_token(1);
-
+    
     in_assign = 1;
-    parse_start(assignor);
+    parse_start(temp_node);
     in_assign = 0;
+    
+    current_node->assign.right = temp_node->branch;
+    free(temp_node);
+
 
     // we need to forward to the end of the line
     while(current_token != NULL){
@@ -314,7 +315,7 @@ ast *parse_operator(ast *current_node){
     }   
 
     if(current_token->type != END_OF_LINE){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected 'L;' after assignment");
+        handle_error(current_token, UNEXPECTED_ERROR, "Expected ';' after assignment");
         return NULL;
     }  
     switch_token(1);
@@ -362,6 +363,7 @@ ast* parse_start(ast *current_node){
             if(in_assign){
                 return current_node;
             }
+            break;
         case START:
         case DELIMITER:
         case COMMENT:

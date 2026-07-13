@@ -16,15 +16,22 @@ void printprefix(int level) {
         printf("|  ");
 }
 
+void print_instructions(instruction *start){
+    printf("\nInstructions: ");
+    while(start != NULL){
+        printf(" %i ", start->type);
+        start = start->next_instr;
+    }
+    printf("\n");
+}
+
 void print_ast(ast *root, int level){
     if (root == NULL) return;
     // print current level
     if((level > 1) && (root->type != ROOT)) printprefix(level);
     switch(root->type){
         case ROOT:
-            if(level == 1){
-                printf("├─> ROOT\n");
-            }
+            printf("├─> ROOT\n");
             break;
         case TYPE:
             printf("├── TYPE: %i\n", root->var_type);
@@ -58,16 +65,16 @@ void print_ast(ast *root, int level){
     switch(root->type){
         case ASSIGN:
         printprefix(level+1);
-        printf("├─> Assignee:\n");
-        print_ast(root->assignment.assignee, level+1);
+        printf("├─> Left:\n");
+        print_ast(root->assign.left, level+1);
         printprefix(level+1);
-        printf("├─> Assignor:\n");
-        print_ast(root->assignment.assignor, level+1);
+        printf("├─> Right:\n");
+        print_ast(root->assign.right, level+1);
         break;
         case FUNC_DEF:
         printprefix(level+1);
         printf("├─> Parameters:\n");
-        print_ast(root->func.variables, level+1);
+        print_ast(root->func.param, level+1);
         printprefix(level+1);
         printf("├─> Body:\n");
         print_ast(root->func.body, level+1);
@@ -161,14 +168,13 @@ void free_ast(ast *root){
             free(root->value);
             break;
         case ASSIGN:
-            free_ast(root->assignment.assignee);
-            free_ast(root->assignment.assignor);
-            //free(root->value);
+            free_ast(root->assign.left);
+            free_ast(root->assign.right);
             break;
         case FUNC_DEF:
             free(root->func.name);
             free_ast(root->func.body);
-            free_ast(root->func.variables);
+            free_ast(root->func.param);
             break;
         default:
             break;
@@ -176,4 +182,13 @@ void free_ast(ast *root){
     ast *next = root->branch;
     free(root);
     free_ast(next);
+}
+
+void free_instructions(instruction *start){
+    while(start != NULL){
+        instruction *temp = start->next_instr;
+        //if(start->type == DEFINE_VAR) free(start->var);
+        free(start);
+        start = temp;
+    }
 }
