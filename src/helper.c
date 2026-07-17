@@ -16,15 +16,6 @@ void printprefix(int level) {
         printf("|  ");
 }
 
-void print_instructions(instruction *start){
-    printf("\nInstructions: ");
-    while(start != NULL){
-        printf(" %i ", start->type);
-        start = start->next_instr;
-    }
-    printf("\n");
-}
-
 void print_ast(ast *root, int level){
     if (root == NULL) return;
     // print current level
@@ -34,29 +25,50 @@ void print_ast(ast *root, int level){
             printf("├─> ROOT\n");
             break;
         case TYPE:
-            printf("├── TYPE: %i\n", root->var_type);
+            char *str = "default";
+            switch(root->var_type){
+                case VAR_QUBIT:
+                    str = "qubit";
+                    break;
+                case VAR_BIT:
+                    str = "bit";
+                    break;
+                case VAR_VOID:
+                    str = "void";
+                    break;
+                default:
+            }
+            printf("├── TYPE: '%s'\n", str);
             break;
         case NAME:
-            printf("├── NAME: %s\n",root->value);
+            printf("├── NAME: '%s'\n",root->name);
+            break;
+        case IDENTIFIER:
+            printf("├── IDENTFIER: '%s'\n",root->name);
+            break;
+        case CALL:
+            printf("├── CALL: '%s'\n",root->value);
             break;
         case VALUE:
-        printf("├── VALUE: %s\n", root->value);
-        break;
+            printf("├── VALUE: '%s'\n", root->value);
+            break;
         case ASSIGN:
-        printf("├── ASSIGN: %c\n", *(root->value));
-        break;
+            printf("├── ASSIGN: '%c'\n", *(root->value));
+            break;
         case INCLUDE:
-        printf("├── INCLUDE: %s\n", root->value);
-        break;
-        case FUNC_DEF:
-        printf("├── FUNCTION: %s\n", root->func.name);
-        break;
+            printf("├── INCLUDE: '%s'\n", root->value);
+            break;
+        case FUNCTION:
+            printf("├── FUNCTION: '%s'\n", root->name);
+            break;
+        case MEASURE:
+            printf("├── MEASURE: '%s'\n", root->name);
+            break;
         case RETURN:
-        printf("├── RETURN\n");
-        break;
-        case NOT_DET:
-        printf("├── UNKNOWN\n");
+            printf("├── RETURN\n");
+            break;
         default:
+            printf("├── UNKNOWN\n");
             break;
     }
     
@@ -64,23 +76,28 @@ void print_ast(ast *root, int level){
     // recurse sub-tree
     switch(root->type){
         case ASSIGN:
-        printprefix(level+1);
-        printf("├─> Left:\n");
-        print_ast(root->assign.left, level+1);
-        printprefix(level+1);
-        printf("├─> Right:\n");
-        print_ast(root->assign.right, level+1);
-        break;
-        case FUNC_DEF:
-        printprefix(level+1);
-        printf("├─> Parameters:\n");
-        print_ast(root->func.param, level+1);
-        printprefix(level+1);
-        printf("├─> Body:\n");
-        print_ast(root->func.body, level+1);
-        break;
+            printprefix(level+1);
+            printf("├─> Left:\n");
+            print_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Right:\n");
+            print_ast(root->right, level+1);
+            break;
+        case FUNCTION:
+            printprefix(level+1);
+            printf("├─> Parameters:\n");
+            print_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Body:\n");
+            print_ast(root->right, level+1);
+            break;
+        case CALL:
+            printprefix(level+1);
+            printf("├─> Parameters:\n");
+            print_ast(root->left, level+1);
+            break;
         default:
-        break;
+            break;
     }
 
     print_ast(root->branch, level);
@@ -126,9 +143,6 @@ void print_token_list(token* first_token){
                 break;
 
             case END:
-                if(first_token->prev_token->type != END_OF_LINE){
-                    printf("\n");
-                }
                 printf("[END]\n\n");
                 break;
             
@@ -144,6 +158,13 @@ void print_token_list(token* first_token){
     }
 }
 
+void print_var_list(variable *var_list, size_t size){
+    printf("\n");
+    for(int i = 0; i < size; i++){
+        printf("Var %i: '%s' = %s\n", i, var_list[i].name, var_list[i].value);
+    }
+}
+
 void free_token_list(token* first_token){
     while(first_token != NULL){
         free(first_token->value);
@@ -151,8 +172,9 @@ void free_token_list(token* first_token){
             free(first_token);
             break;
         }
-        first_token = first_token->next_token;
-        free(first_token->prev_token);
+        token* temp_token = first_token->next_token;
+        free(first_token);
+        first_token = temp_token;
     }
 }
 
@@ -161,20 +183,30 @@ void free_ast(ast *root){
         return;
     }
 
+    free(root->llvm);
     switch(root->type){
+        case CALL:
+            free(root->name);
+            free_ast(root->left);
+            break;
+        case MEASURE:
+        case IDENTIFIER:
         case INCLUDE:
-        case VALUE:
         case NAME:
+            free(root->name);
+            break;
+        case VALUE:
             free(root->value);
             break;
         case ASSIGN:
-            free_ast(root->assign.left);
-            free_ast(root->assign.right);
+            free(root->value);
+            free_ast(root->left);
+            free_ast(root->right);
             break;
-        case FUNC_DEF:
-            free(root->func.name);
-            free_ast(root->func.body);
-            free_ast(root->func.param);
+        case FUNCTION:
+            free(root->name);
+            free_ast(root->left);
+            free_ast(root->right);
             break;
         default:
             break;
@@ -184,11 +216,9 @@ void free_ast(ast *root){
     free_ast(next);
 }
 
-void free_instructions(instruction *start){
-    while(start != NULL){
-        instruction *temp = start->next_instr;
-        //if(start->type == DEFINE_VAR) free(start->var);
-        free(start);
-        start = temp;
+void free_var_list(variable *var_list, size_t size){
+    for(int i = 0; i < size; i++){
+        free(var_list[i].name);
+        free(var_list[i].value);
     }
 }

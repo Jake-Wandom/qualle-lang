@@ -3,24 +3,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int num_of_errors = 0;
 static token *current_token;
-static bool in_assign = 0;
 static ast *last_eol;
+static bool in_assign = 0;
 
-ast* create_node(ast *current_node){
+/*
+creates a new node with all pointer values set to NULL
+contrary to create_token, this function does not automatically append
+*/
+ast* create_node(){
     ast *new_node = calloc(1, sizeof(ast));
-    new_node->type = NOT_DET;
+    new_node->type = ROOT;
     new_node->branch = NULL;
-    new_node->value = NULL;
+    new_node->left = NULL;
+    new_node->right = NULL;
+    new_node->name = NULL;
+    new_node->line = current_token->line;
+    new_node->llvm =  calloc(1, sizeof(LLVMValueRef));
 
-    if(current_node){
-        current_node->branch = new_node;
-    } else {
-        fprintf(stderr, "Unable to create new node\n");
-        free(new_node);
-        return NULL;
-    }
     return new_node;
 }
 
@@ -43,7 +43,6 @@ void switch_token(int num){
 }
 
 void handle_error(token *error_token, enum error_type type, char *error_message){
-    num_of_errors++;
 
     switch (type){
         case UNEXPECTED_ERROR:
@@ -74,10 +73,9 @@ void handle_error(token *error_token, enum error_type type, char *error_message)
 }
 
 ast* parse_function(ast *current_node){
-    current_node = create_node(current_node);
-    current_node->type = FUNC_DEF;
-    current_node->func.name = NULL;
-    current_node->func.param = NULL;
+    ast *new_node = create_node();
+    new_node->type = FUNCTION;
+    current_node->branch = new_node;
 
     switch_token(1);
 
@@ -88,8 +86,8 @@ ast* parse_function(ast *current_node){
 
     // store function name any double definitions are handled later
     size_t size = strlen(current_token->value)+1;
-    current_node->func.name = malloc(size);
-    strncpy(current_node->func.name, current_token->value, size);
+    new_node->name = malloc(size);
+    strncpy(new_node->name, current_token->value, size);
 
 
     switch_token(1);
@@ -102,21 +100,17 @@ ast* parse_function(ast *current_node){
     switch_token(1);
 
     // create subtree with all variables
-    ast *temp_node = calloc(1, sizeof(ast));
-    temp_node->type = ROOT;
-    temp_node->branch = NULL;
-    temp_node->value = NULL;
+    ast *temp_node = create_node();
     
     parse_start(temp_node);
     
-    current_node->func.param = temp_node->branch;
+    new_node->left = temp_node->branch;
 
     // we need to forward to the end of the function definition
     while(current_token != NULL){
         if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == ')')){
             break;
         }
-
         switch_token(1);
     }   
 
@@ -139,7 +133,7 @@ ast* parse_function(ast *current_node){
     
     parse_start(temp_node);
     
-    current_node->func.body = temp_node->branch;
+    new_node->right = temp_node->branch;
     free(temp_node);
 
     // we need to forward to the end of the function body
@@ -147,7 +141,6 @@ ast* parse_function(ast *current_node){
         if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == '}')){
             break;
         }
-
         switch_token(1);
     }   
 
@@ -157,7 +150,7 @@ ast* parse_function(ast *current_node){
     }
 
     switch_token(1);
-    return parse_start(current_node);
+    return parse_start(new_node);
 }
 
 ast* parse_include(ast *current_node){
@@ -166,12 +159,13 @@ ast* parse_include(ast *current_node){
     if(current_token->type != INDICATOR){
         handle_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
     }
-    current_node = create_node(current_node);
-    current_node->type = INCLUDE;
+    ast *new_node = create_node();
+    new_node->type = INCLUDE;
+    current_node->branch = new_node;
     
     size_t size = strlen(current_token->value)+1;
-    current_node->value = calloc(1, size);
-    strncpy(current_node->value, current_token->value, size);
+    new_node->value = calloc(1, size);
+    strncpy(new_node->value, current_token->value, size);
     
     switch_token(1);
 
@@ -193,9 +187,13 @@ ast* parse_include(ast *current_node){
         handle_error(current_token, UNEXPECTED_ERROR, "Expected ';' or linebreak at the end of include");
         return NULL;
     }
-    return parse_start(current_node);
+    return parse_start(new_node);
 }
 
+/*
+this function determines if the given indicator token is a type
+if it is a type, it checks if it is part of a variable declaration and handles that
+*/
 ast* parse_type(ast *current_node){
     enum variable_type type;
 
@@ -204,8 +202,8 @@ ast* parse_type(ast *current_node){
         return NULL;
     }
 
-    if(strcmp(current_token->value, "qbit") == 0){
-        type = VAR_QBIT;
+    if(strcmp(current_token->value, "qubit") == 0){
+        type = VAR_QUBIT;
     } else if(strcmp(current_token->value, "bit") == 0){
         type = VAR_BIT;
     } else if(strcmp(current_token->value, "N") == 0){
@@ -220,80 +218,50 @@ ast* parse_type(ast *current_node){
         type = VAR_DOUBLE;
     } else if(strcmp(current_token->value, "vector") == 0){
         type = VAR_VECTOR;
+    } else if(strcmp(current_token->value, "void") == 0){
+        type = VAR_VOID;
     } else {
-        //handle_error(current_token, UNKOWN_TYPE_ERROR, "Unkown type");
         return NULL;
     }
 
     
-    current_node = create_node(current_node);
-    current_node->type = TYPE;
-    current_node->var_type = type;
+    ast *new_node = create_node();
+    new_node->type = TYPE;
+    new_node->var_type = type;
+    current_node->branch = new_node;
 
     switch_token(1);
 
-    return parse_start(current_node);
-}
+    // now we check if the next token is an indicator
+    // if it is, we assume this is a variable declaration
+    if(current_token->type == INDICATOR){
+        ast *name_node = create_node();
+        name_node->type = NAME;
 
+        size_t size = strlen(current_token->value)+1;
+        name_node->name = calloc(1, size);
+        strncpy(name_node->name, current_token->value, size);
 
-ast* parse_indicator(ast *current_node){
-    current_node = create_node(current_node);
-    current_node->type = NAME;
-    size_t size = strlen(current_token->value)+1;
-    current_node->value = calloc(1, size);
-    strncpy(current_node->value, current_token->value, size);
-
-    switch_token(1);
-
-    if((current_token->type == BRACKET_OPEN) && (*(current_token->value) == '(')){
-
+        new_node->branch = name_node;
         switch_token(1);
-        current_node = parse_start(current_node);
-    
-        // we need to forward to the end of the function definition
-        while(current_token != NULL){
-            if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == ')')){
-                break;
-            }
 
-            switch_token(1);
-        }   
-
-        if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != ')')){
-            handle_error(current_token, UNEXPECTED_ERROR, "Expected ')' in function reference");
-            return NULL;
-        }
-        switch_token(1);
+        return parse_start(name_node);
     }
 
-    return parse_start(current_node);
+    return parse_start(new_node);
 }
 
-ast* parse_number(ast *current_node){
-    current_node = create_node(current_node);
-    current_node->type = VALUE;
-    size_t size = strlen(current_token->value)+1;
-    current_node->value = calloc(1, size);
-    strncpy(current_node->value, current_token->value, size);
-
-    switch_token(1);
-
-    return parse_start(current_node);
-}
-
-ast *parse_operator(ast *current_node){
+ast *parse_assign(ast *current_node){
     ast *left = last_eol->branch;
-   ast *temp_node = calloc(1, sizeof(ast));
-    temp_node->type = ROOT;
-    temp_node->branch = NULL;
-    temp_node->value = NULL;
+    ast *temp_node = create_node();
 
-
-    last_eol->branch = NULL;
-    current_node = create_node(last_eol);
+    current_node = create_node();
     current_node->type = ASSIGN;
+    current_node->value = malloc(1);
+    *(current_node->value) = *(current_token->value);
+    current_node->left = left;
 
-    current_node->assign.left = left;
+    last_eol->branch = current_node;
     
     switch_token(1);
     
@@ -301,7 +269,7 @@ ast *parse_operator(ast *current_node){
     parse_start(temp_node);
     in_assign = 0;
     
-    current_node->assign.right = temp_node->branch;
+    current_node->right = temp_node->branch;
     free(temp_node);
 
 
@@ -323,6 +291,204 @@ ast *parse_operator(ast *current_node){
     return parse_start(current_node);
 }
 
+/*
+this parses operators these can be operations as well as assigns
+*/
+ast* parse_operator(ast *current_node){
+    if(*(current_token->value) == '='){
+        return parse_assign(current_node);
+    } 
+
+    return NULL;
+}
+
+ast* parse_measure(ast *current_node){
+    if(current_token->next_token->type != BRACKET_OPEN) return NULL;
+    if(*(current_token->next_token->value) != '(') return NULL;
+
+    ast *new_node = create_node();
+    new_node->type = MEASURE;
+
+    current_node->branch = new_node;
+    switch_token(2);
+
+    if(current_token->type != INDICATOR){
+        handle_error(current_token, 0, "Expected qubit to measure");
+        return NULL;
+    }
+
+    size_t size = strlen(current_token->value)+1;
+    new_node->value = calloc(1, size);
+    strncpy(new_node->value, current_token->value, size);
+
+    switch_token(1);
+
+    if(current_token->type != BRACKET_CLOSE) return NULL;
+    if(*(current_token->value) != ')') return NULL;
+
+    switch_token(1);
+
+    return parse_start(new_node);
+}
+
+ast* parse_call(ast *current_node){
+    if(current_token->next_token->type != BRACKET_OPEN) return NULL;
+    if(*(current_token->next_token->value) != '(') return NULL;
+
+    ast *new_node = create_node();
+    new_node->type = CALL;
+
+    size_t size = strlen(current_token->value)+1;
+    new_node->name = calloc(1, size);
+    strncpy(new_node->name, current_token->value, size);
+
+    current_node->branch = new_node;
+    switch_token(2);
+
+    ast *temp_node = create_node();
+    new_node->left = temp_node;
+    while(current_token != NULL){
+        if(current_token->type == BRACKET_CLOSE){
+            if(*(current_token->value) != ')') return NULL;
+            switch_token(1);
+            break;
+
+        } else if(current_token->type == NUMBER){
+            ast *number_node = create_node();
+            number_node->type = VALUE;
+            temp_node->branch = number_node;
+
+            size_t size = strlen(current_token->value)+1;
+            number_node->value = calloc(1, size);
+
+            strncpy(number_node->value, current_token->value, size);
+
+            switch_token(1);
+
+            // seems as though we have encountered a double/float
+            if(current_token->type == DELIMITER){
+                switch_token(1);
+                if(current_token->type == NUMBER){
+                    realloc(number_node->value, size+strlen(current_token->value));
+                    strcat(number_node->value, current_token->value);
+                    switch_token(1);
+                }
+            }
+            temp_node = number_node;
+            continue;
+            
+        } else if(current_token->type == INDICATOR){
+            ast *iden_node = create_node();
+            iden_node->type = IDENTIFIER;
+
+            size_t size = strlen(current_token->value)+1;
+            iden_node->name = calloc(1, size);
+            strncpy(iden_node->name, current_token->value, size);
+
+            temp_node->branch = iden_node;
+            switch_token(1);
+            temp_node = iden_node;
+            continue;
+
+        } else {
+            handle_error(current_token, 0, "Expected Number or Identifier in function call");
+            return NULL;
+        }
+
+    }
+    if(new_node->left->branch != NULL){
+        temp_node = new_node->left;
+        new_node->left = new_node->left->branch;
+        free(temp_node);
+    }
+
+    return parse_start(new_node);
+}
+
+/*
+this function is the starting point for all string based commands
+it determines what the string means and tries to send it to the apropiate function
+*/
+ast* parse_indicator(ast *current_node){
+    // check if its a type
+    ast *res = parse_type(current_node);
+    if(res != NULL){
+        return res;
+    }
+    
+    // check if its a function definition
+    if(strcmp(current_token->value, "def") == 0){
+        return parse_function(current_node);
+    }
+    
+    // check if its a measure
+    if(strcmp(current_token->value, "measure") == 0){
+        return parse_measure(current_node);
+    }
+    
+    // check if its an include
+    if(strcmp(current_token->value, "include") == 0){
+        return parse_include(current_node);
+    }
+    
+    // check if its a return
+    if(strcmp(current_token->value, "return") == 0){
+        ast *new_node = create_node();
+        new_node->type = RETURN;
+        current_node->branch = new_node;
+        
+        switch_token(1);
+        return parse_start(current_node);
+    }
+    
+    // check if its a function call
+    res = parse_call(current_node);
+    if(res != NULL){
+        return res;
+    }
+
+    // now we assume we are handling a variable reference aka an identifier
+    ast *new_node = create_node();
+    new_node->type = IDENTIFIER;
+
+    size_t size = strlen(current_token->value)+1;
+    new_node->name = calloc(1, size);
+    strncpy(new_node->name, current_token->value, size);
+
+    current_node->branch = new_node;
+    switch_token(1);
+
+    return parse_start(current_node);
+}
+
+ast* parse_number(ast *current_node){
+    ast *new_node = create_node();
+    new_node->type = VALUE;
+    current_node->branch = new_node;
+
+    size_t size = strlen(current_token->value)+1;
+    new_node->value = calloc(1, size);
+
+    strncpy(new_node->value, current_token->value, size);
+
+    switch_token(1);
+
+    // seems as though we have encountered a double/float
+    if(current_token->type == DELIMITER){
+        switch_token(1);
+        if(current_token->type == NUMBER){
+            realloc(new_node->value, size+strlen(current_token->value));
+            strcat(new_node->value, current_token->value);
+            switch_token(1);
+        }
+    }
+
+    return parse_start(new_node);
+}
+
+
+
+
 
 ast* parse_start(ast *current_node){
     if(!current_token){
@@ -333,69 +499,47 @@ ast* parse_start(ast *current_node){
 
     switch(current_token->type){
         case INDICATOR:
-            if(strcmp(current_token->value, "def") == 0){
-                // go to function state with quantum
-                return parse_function(current_node);
-            } else if(strcmp(current_token->value, "include") == 0){
-                // go to include state
-                return parse_include(current_node);
-            } else {
-                // check if this is a variable definition
-                ast *new_node = parse_type(current_node);
-                if(new_node != NULL){
-                    return new_node;
-                }
-                // go to indicator state that decides what this indicator is
-                return parse_indicator(current_node);
-            }
-            break;
+            return parse_indicator(current_node);
         
         case NUMBER:
             return parse_number(current_node);
-            break;
-        
-        case OPERATOR:
-            return parse_operator(current_node);
-            break;
 
         case END_OF_LINE:
             last_eol = current_node;
             if(in_assign){
                 return current_node;
             }
-            break;
+            switch_token(1);
+            return parse_start(current_node);
+        
+        case OPERATOR:
+            return parse_operator(current_node);
+
         case START:
-        case DELIMITER:
         case COMMENT:
             switch_token(1);
             return parse_start(current_node);
-            break;
 
         case BRACKET_CLOSE:
         case END:
             return current_node;
-            break;
 
         default:
             handle_error(current_token, 0, "Not recognised in this context");
-    }
+        }
     return current_node;
 }
 
 ast* generate_ast(token *first_token){
-    ast *root = calloc(1, sizeof(ast));
-    root->type = ROOT;
-    root->branch = NULL;
-    root->value = NULL;
-
-    num_of_errors = 0;
+    // initialisations
+    current_token = first_token;
+    ast *root = create_node();
     in_assign = 0;
     last_eol = root;
-    current_token = first_token;
 
-    ast *current_node = parse_start(root);
-    if(current_node == NULL){
+    if(parse_start(root) == NULL){
         fprintf(stderr, "handle_input returned NULL\n");
+        return NULL;
     }
     return root;
 }

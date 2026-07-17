@@ -1,7 +1,4 @@
 #include "helper.h"
-#include "scanner.h"
-#include "parser.h"
-#include "analyser.h"
 #include "generator.h"
 
 #include <stdio.h>
@@ -55,6 +52,8 @@ int main(int argc, char **argv){
             
             if(*(files+num_of_files-1) == NULL){
                 fprintf(stderr, "Could not locate or open file %s\n", argv[i]);
+                free(files);
+                return 1;
             }
         }
     }
@@ -96,19 +95,15 @@ int main(int argc, char **argv){
 
         if(print) print_ast(root, 1);
         if(print) printf("\n\n");
-
-        instruction *start = analyse_ast(root);
-        print_instructions(start);
         
 
-        if(ll) generate_QIR(0, start);
-        else generate_QIR(1, start);
+         if(ll) generate_QIR(0, root);
+         else generate_QIR(1, root);
 
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists
         free_token_list(first_token);
         free_ast(root);
-        free_instructions(start);
 
         // reset buffer
         zero_buffer(main_buffer, buffer_size);

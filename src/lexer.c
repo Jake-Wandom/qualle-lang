@@ -1,4 +1,4 @@
-#include "scanner.h"
+#include "lexer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +23,6 @@ token* create_token(token* current_token){
 
     if(current_token){
         current_token->next_token = new_token;
-        new_token->prev_token = current_token;
     } else {
         fprintf(stderr, "create_token has not recieved a valid token\n");
         free(new_token);
@@ -148,6 +147,7 @@ token* check_token(char chr, token* current_token){
             current_token->type = OPERATOR;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
+            printf("char??? %c %i", *(current_token->value), *(current_token->value));
             break;
         
         // currently only letters and _ can be used for variable names and definitions, this could change in the future
@@ -225,7 +225,6 @@ token* get_token(char* buffer){
     token *first_token = NULL;
     first_token = malloc(sizeof(token));
     first_token->type = START;
-    first_token->prev_token = NULL;
     first_token->next_token = NULL;
     first_token->value = NULL;
     
