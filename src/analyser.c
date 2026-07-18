@@ -97,6 +97,31 @@ int analyse_call(ast *node){
     }
 }
 
+int analyse_left(ast *node){
+    if(node->type == IDENTIFIER){
+        int pos = lookup_var(node->name);
+        if(pos == -1) return -1;
+        return pos;
+    } else if(node->type == TYPE){
+        variable new_var = analyse_type(node);
+        if(new_var.type == -1) return -1;
+        node->branch->llvm = new_var.llvm;
+        return lookup_var(node->name);
+    } else {
+        fprintf(stderr, "Expected Variable definition or reference left of assign\n");
+        return -1;
+    }
+}
+
+char* analyse_right(ast *node){
+    // MUCH TODO HERE
+    if(node->type == NUMBER){
+        return node->value;
+    } else {
+        return NULL;
+    }
+}
+
 int walk_ast(ast *node){
     if(node == NULL) return 0;
 
@@ -113,8 +138,20 @@ int walk_ast(ast *node){
             if(res == -1) return -1;
             return walk_ast(node->branch);
             break;
+        case ASSIGN:
+            int r = analyse_left(node->left);
+            if(res == -1) return -1;
+            variable_list[res].value = analyse_right(node->right);
+            break;
         case FUNCTION:
             break;
+        case IDENTIFIER:
+            int pos = lookup_var(node->name);
+            if(pos == -1){
+                fprintf(stderr, "Variable not in the list\n");
+                return -1;
+            }
+            node->llvm = variable_list[pos].llvm;
         default:
             return walk_ast(node->branch);
     }
@@ -130,6 +167,6 @@ void analyse_ast(ast *root){
     }
 
     // release the list!
-    free_var_list(variable_list, list_size);
-    free(variable_list);
+    //free_var_list(variable_list, list_size);
+    //free(variable_list);
 }

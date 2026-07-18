@@ -74,7 +74,7 @@ void generate_instructions(qir_context qir, ast *node){
                 num_args++;
                 realloc(args, num_args);
 
-                args[num_args-1] = *param_node->llvm;
+                args[num_args-1] = *(param_node->llvm);
 
                 param_node = param_node->branch;
             }
@@ -86,12 +86,9 @@ void generate_instructions(qir_context qir, ast *node){
             LLVMValueRef mz[2] = { variable, result };
             LLVMBuildCall2(qir.builder, measure_type, measure_function, mz, 2, "");
             break;
-        case IDENTIFIER:
-            break;
         case TYPE:
             if(node->branch->type != NAME) return;
             *(node->branch->llvm) = add_value(qir, node->var_type, 0);
-            LLVMAddGlobal(qir.module, ptr_type, node->branch->name);
             
         case ASSIGN:
             break;
