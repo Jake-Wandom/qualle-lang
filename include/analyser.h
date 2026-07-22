@@ -11,6 +11,6 @@ typedef struct {
     LLVMValueRef *llvm;
 } variable;
 
-int analyse_ast(ast *root);
+LLVMValueRef** analyse_ast(ast *root);
 
 #endif

@@ -3,3 +3,4 @@ qubit q;
 bit b;
 void v;
 H(q);
+measure(q);

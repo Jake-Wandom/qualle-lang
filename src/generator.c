@@ -136,10 +136,20 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMPositionBuilderAtEnd(qir.builder, entry);
 
 
-    analyse_ast(root);
+    LLVMValueRef **llvm_list = analyse_ast(root);
+    if(llvm_list == NULL) goto end;
     
     generate_instructions(qir, root);
     
+    // free the llvm pointers
+    int i = 0;
+    LLVMValueRef *llvm = llvm_list[i];
+    while(llvm != NULL){
+        i++;
+        free(llvm);
+        llvm = llvm_list[i];
+    }
+    free(llvm_list);
 
     //LLVMBuildCall2(qir.builder, result_type, result_function, mz, 2, "");
 
@@ -204,6 +214,7 @@ FILE *generate_QIR(bool bitcode, ast *root){
         fprintf(stderr, "Unable to open output file\n");
         return NULL;
     }
+    end:
     LLVMDisposeBuilder(qir.builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);

@@ -184,16 +184,15 @@ void free_ast(ast *root){
         return;
     }
 
-    free(root->llvm);
     switch(root->type){
         case CALL:
             free(root->name);
             free_ast(root->left);
             break;
-        case MEASURE:
+        case NAME:
         case IDENTIFIER:
         case INCLUDE:
-        case NAME:
+        case MEASURE:
             free(root->name);
             break;
         case VALUE:
