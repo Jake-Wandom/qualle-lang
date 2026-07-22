@@ -92,6 +92,14 @@ info:
 shared:
 	gcc -shared -fPIC -o include/lib-quallcom.so $(OBJS)
 
+.PHONY: venv
+venv: 
+	( \
+	source venv/bin/activate; \
+	python3 src/python/main.py; \
+	deactivate; \
+	)
+
 # Directory Creation
 $(BIN_DIR) $(OBJ_DIR) $(DEP_DIR):
 	mkdir -p $@

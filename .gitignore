@@ -1,8 +1,5 @@
 #ignore python venv
-bin/
-lib/
-lib64
-pyvenv.cfg
+venv/
 
 # ignore binaries
 build/
