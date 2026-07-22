@@ -18,8 +18,8 @@ ast* create_node(){
     new_node->left = NULL;
     new_node->right = NULL;
     new_node->name = NULL;
+    new_node->llvm =  NULL;
     new_node->line = current_token->line;
-    new_node->llvm =  calloc(1, sizeof(LLVMValueRef));
 
     return new_node;
 }

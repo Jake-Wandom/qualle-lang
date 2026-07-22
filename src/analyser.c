@@ -6,8 +6,21 @@
 #include <string.h>
 #include <stdbool.h>
 
-static variable *variable_list;
-static size_t list_size;
+int count_nodes(ast *root){
+    if(root == NULL) return 0;
+    switch(root->type){
+        case TYPE:
+            return count_nodes(root->branch)+1;
+        case FUNCTION:
+        case ASSIGN:
+            return count_nodes(root->left)+count_nodes(root->right)+count_nodes(root->branch);
+        case CALL:
+            return count_nodes(root->left)+count_nodes(root->branch);
+        default:
+            return count_nodes(root->branch);
+    }
+    return -1;
+}
 
 variable create_var(enum variable_type type, char *name){
     variable new_var;
@@ -21,51 +34,58 @@ variable create_var(enum variable_type type, char *name){
     return new_var;
 }
 
-int lookup_var(char *name){
-    for(int i = 0; i < list_size; i++){
+int lookup_var(char *name, variable *variable_list, size_t size){
+    if(variable_list == NULL) return -1;
+
+    for(int i = 0; i < size; i++){
+        if(variable_list[i].name == NULL){
+            return i*-1;
+        }
+
         if(strcmp(variable_list[i].name, name) == 0){
             return i;
         }
     }
     // not in the list
-    return -1;
+    return INT32_MAX;
 }
 
-int add_var(variable new_var){
-    int pos = lookup_var(new_var.name);
+int add_var(variable new_var, variable *variable_list, size_t size){
+    int pos = lookup_var(new_var.name, variable_list, size);
     if(pos >= 0){
         // already in the list
         return -1;
     }
-    list_size++;
-    realloc(variable_list, list_size);
-    variable_list[list_size-1] = new_var;
-    return list_size-1;
+
+    variable_list[pos] = new_var;
+    return pos;
 }
 
 enum variable_type check_type(char *value){
-
+    
 }
 
-variable analyse_type(ast *node){
+variable analyse_type(ast *node, variable *variable_list, size_t size){
     if(node->branch->type != NAME){
         return (variable){-1};
     }
     // create a basic variable without a value and add it to the list
     variable new_var = create_var(node->var_type, node->branch->name);
-    int pos = add_var(new_var);
+    int pos = add_var(new_var, variable_list, size);
     if(pos == -1){
         fprintf(stderr, "Variable with the same name already declared\n");
         return (variable){-1};
     }
-
+    node->branch->llvm = new_var.llvm;
+    
+    
     return new_var;
 }
 
-int check_parameters(ast *node, int num_param){
+int check_parameters(ast *node, int num_param, variable *variable_list, size_t size){
     for(int i = 0; i < num_param; i++){
         if(node->type == IDENTIFIER){
-            int pos = lookup_var(node->name);
+            int pos = lookup_var(node->name, variable_list, size);
             if(pos == -1){
                 fprintf(stderr, "Unkown variable\n");
                 return -1;
@@ -83,37 +103,37 @@ int check_parameters(ast *node, int num_param){
     return 0;
 }
 
-int analyse_call(ast *node){
+int analyse_call(ast *node, variable *variable_list, size_t size){
     // TODO custom functions
     if(strcmp(node->name, "H") == 0){
-        int res = check_parameters(node->left, 1);
+        int res = check_parameters(node->left, 1, variable_list, size);
         if(res == -1) return -1;
         return 0;
         
     } else if(strcmp(node->name, "CNOT") == 0){
-        int res = check_parameters(node->left, 2);
+        int res = check_parameters(node->left, 2, variable_list, size);
         if(res == -1) return -1;
         return 0;
     }
 }
 
-int analyse_left(ast *node){
+int analyse_left(ast *node, variable *variable_list, size_t size){
     if(node->type == IDENTIFIER){
-        int pos = lookup_var(node->name);
+        int pos = lookup_var(node->name, variable_list, size);
         if(pos == -1) return -1;
         return pos;
     } else if(node->type == TYPE){
-        variable new_var = analyse_type(node);
+        variable new_var = analyse_type(node, variable_list, size);
         if(new_var.type == -1) return -1;
         node->branch->llvm = new_var.llvm;
-        return lookup_var(node->name);
+        return lookup_var(node->name, variable_list, size);
     } else {
         fprintf(stderr, "Expected Variable definition or reference left of assign\n");
         return -1;
     }
 }
 
-char* analyse_right(ast *node){
+char* analyse_right(ast *node, variable *variable_list, size_t size){
     // MUCH TODO HERE
     if(node->type == NUMBER){
         return node->value;
@@ -122,51 +142,53 @@ char* analyse_right(ast *node){
     }
 }
 
-int walk_ast(ast *node){
+int walk_ast(ast *node, variable *variable_list, size_t size){
     if(node == NULL) return 0;
-
+    
     switch(node->type){
         case TYPE:
-            // check if we can define a new variable
-            variable new_var = analyse_type(node);
-            if(new_var.type == -1) return -1;
-            node->branch->llvm = new_var.llvm;
-            return walk_ast(node->branch->branch);
-            break;
+        // check if we can define a new variable
+        variable new_var = analyse_type(node, variable_list, size);
+        if(new_var.type == -1) return -1;
+        return walk_ast(node->branch->branch, variable_list, size);
+        break;
         case CALL:
-            int res = analyse_call(node);
-            if(res == -1) return -1;
-            return walk_ast(node->branch);
-            break;
+        int res = analyse_call(node, variable_list, size);
+        if(res == -1) return -1;
+        return walk_ast(node->branch, variable_list, size);
+        break;
         case ASSIGN:
-            int r = analyse_left(node->left);
-            if(res == -1) return -1;
-            variable_list[res].value = analyse_right(node->right);
-            break;
+        int r = analyse_left(node->left, variable_list, size);
+        if(res == -1) return -1;
+        variable_list[res].value = analyse_right(node->right, variable_list, size);
+        break;
         case FUNCTION:
-            break;
+        break;
         case IDENTIFIER:
-            int pos = lookup_var(node->name);
-            if(pos == -1){
-                fprintf(stderr, "Variable not in the list\n");
-                return -1;
-            }
-            node->llvm = variable_list[pos].llvm;
+        int pos = lookup_var(node->name, variable_list, size);
+        if(pos == -1){
+            fprintf(stderr, "Variable not in the list\n");
+            return -1;
+        }
+        node->llvm = variable_list[pos].llvm;
         default:
-            return walk_ast(node->branch);
+        return walk_ast(node->branch, variable_list, size);
     }
 }
 
-void analyse_ast(ast *root){
-    variable_list = NULL;
-    list_size = 0;
-
-    int res = walk_ast(root);
+int analyse_ast(ast *root){
+    
+    size_t size = count_nodes(root);
+    variable *variable_list = calloc(size, sizeof(variable));
+    
+    int res = walk_ast(root, variable_list, size);
     if(res != 0){
         fprintf(stderr, "Something went wrong during analyse\n");
+        return -1;
     }
-
+    
+    print_var_list(variable_list, size);
     // release the list!
-    //free_var_list(variable_list, list_size);
-    //free(variable_list);
+    free_var_list(variable_list, size);
+    free(variable_list);
 }

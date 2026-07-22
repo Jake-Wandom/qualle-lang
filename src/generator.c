@@ -16,27 +16,33 @@ static LLVMValueRef measure_function;
 
 static LLVMTypeRef ptr_type;
 
-void call_function(qir_context qir, LLVMValueRef *args, char *name, int num_args){
+void call_function(qir_context qir, ast *node, char *name){
     LLVMTypeRef void_type = LLVMVoidTypeInContext(qir.context);
     LLVMTypeRef f_type;
     LLVMValueRef f_call;
+    LLVMValueRef *args = NULL;
+    int num_args = 0;
 
     if(strcmp(name, "H") == 0){
-        if(num_args != 1){
-            fprintf(stderr, "Wrong arg number for hadamard call\n");
-            return;
-        }
+        num_args = 1;
+        args = calloc(num_args, sizeof(LLVMValueRef));
+        args[0] = *(node->llvm);
+
         LLVMTypeRef h_param[1] = { ptr_type };
         f_type = LLVMFunctionType(void_type, h_param, num_args, 0);
         f_call = LLVMAddFunction(qir.module, "__quantum__qis__h__body", f_type);
     } else if(strcmp(name, "CNOT") == 0){
-        if(num_args != 2){
-            fprintf(stderr, "Wrong arg number for cnot call\n");
-            return;
-        }
+        num_args = 2;
+        args = calloc(num_args, sizeof(LLVMValueRef));
+        args[0] = *(node->llvm);
+        args[1] = *(node->branch->llvm);
+
         LLVMTypeRef h_param[2] = { ptr_type , ptr_type };
         f_type = LLVMFunctionType(void_type, h_param, num_args, 0);
         f_call = LLVMAddFunction(qir.module, "__quantum__qis__cnot__body", f_type);
+    } else {
+        free(args);
+        return;
     }
     /*
     LLVMTypeRef init_param[1] = { ptr_type };
@@ -46,6 +52,7 @@ void call_function(qir_context qir, LLVMValueRef *args, char *name, int num_args
     */
     
     LLVMBuildCall2(qir.builder, f_type, f_call, args, num_args, "");
+    free(args);
 }
 
 LLVMValueRef add_value(qir_context qir, enum variable_type type, unsigned long long value){
@@ -67,18 +74,7 @@ void generate_instructions(qir_context qir, ast *node){
 
     switch(node->type){
         case CALL:
-            ast *param_node = node->left;
-            LLVMValueRef *args;
-            int num_args = 0;
-            while(param_node != NULL){
-                num_args++;
-                realloc(args, num_args);
-
-                args[num_args-1] = *(param_node->llvm);
-
-                param_node = param_node->branch;
-            }
-            call_function(qir, args, node->left->name, num_args);
+            call_function(qir, node->left, node->name);
             break;
         case MEASURE:
             LLVMValueRef result = LLVMConstPointerNull(ptr_type);
@@ -88,6 +84,9 @@ void generate_instructions(qir_context qir, ast *node){
             break;
         case TYPE:
             if(node->branch->type != NAME) return;
+            if(node->branch->llvm == NULL) {
+                return;
+            }
             *(node->branch->llvm) = add_value(qir, node->var_type, 0);
             
         case ASSIGN:
@@ -136,6 +135,8 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(qir.context, main_function, "entry");
     LLVMPositionBuilderAtEnd(qir.builder, entry);
 
+
+    analyse_ast(root);
     
     generate_instructions(qir, root);
     

@@ -160,6 +160,7 @@ void print_token_list(token* first_token){
 
 void print_var_list(variable *var_list, size_t size){
     printf("\n");
+    printf("SIZE: %lu\n", size);
     for(int i = 0; i < size; i++){
         printf("Var %i: '%s' = %s\n", i, var_list[i].name, var_list[i].value);
     }
