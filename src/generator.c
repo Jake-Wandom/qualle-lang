@@ -14,10 +14,13 @@
 static LLVMTypeRef measure_type;
 static LLVMValueRef measure_function;
 
+static LLVMTypeRef result_type;
+static LLVMValueRef result_function;
+
 static LLVMTypeRef ptr_type;
+static LLVMTypeRef void_type;
 
 void call_function(qir_context qir, ast *node, char *name){
-    LLVMTypeRef void_type = LLVMVoidTypeInContext(qir.context);
     LLVMTypeRef f_type;
     LLVMValueRef f_call;
     LLVMValueRef *args = NULL;
@@ -69,7 +72,6 @@ LLVMValueRef add_value(qir_context qir, enum variable_type type, unsigned long l
 }
 
 void generate_instructions(qir_context qir, ast *node){
-    LLVMTypeRef ptr_type = LLVMPointerTypeInContext(qir.context, 0);
     if(!node) return;
 
     switch(node->type){
@@ -81,6 +83,7 @@ void generate_instructions(qir_context qir, ast *node){
             LLVMValueRef variable = *(node->llvm);
             LLVMValueRef mz[2] = { variable, result };
             LLVMBuildCall2(qir.builder, measure_type, measure_function, mz, 2, "");
+            LLVMBuildCall2(qir.builder, result_type, result_function, mz, 2, "");
             break;
         case TYPE:
             if(node->branch->type != NAME) return;
@@ -111,7 +114,7 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMTypeRef i32_type = LLVMInt32TypeInContext(qir.context);
     LLVMTypeRef i64_type = LLVMInt64TypeInContext(qir.context);
     LLVMTypeRef i1_type = LLVMInt1TypeInContext(qir.context);
-    LLVMTypeRef void_type = LLVMVoidTypeInContext(qir.context);
+    void_type = LLVMVoidTypeInContext(qir.context);
     ptr_type = LLVMPointerTypeInContext(qir.context, 0);
 
 
@@ -127,8 +130,8 @@ FILE *generate_QIR(bool bitcode, ast *root){
 
     // record output
     LLVMTypeRef result_param[2] = {ptr_type, ptr_type};
-    LLVMTypeRef result_type = LLVMFunctionType(void_type, result_param, 2, 0);
-    LLVMValueRef result_function = LLVMAddFunction(qir.module, "__quantum__rt__result_record_output", result_type);
+    result_type = LLVMFunctionType(void_type, result_param, 2, 0);
+    result_function = LLVMAddFunction(qir.module, "__quantum__rt__result_record_output", result_type);
 
     
     // append start point
