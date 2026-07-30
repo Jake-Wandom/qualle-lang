@@ -11,6 +11,6 @@ typedef struct {
     LLVMBuilderRef builder;
 } qir_context;
 
-FILE *generate_QIR(bool bitcode, ast *root);
+FILE *generate_QIR(ast *root);
 
 #endif

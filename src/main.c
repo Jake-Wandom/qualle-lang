@@ -1,5 +1,6 @@
 #include "helper.h"
 #include "generator.h"
+#include "global_flags.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,9 +8,9 @@
 #include <stdbool.h>
 
 int main(int argc, char **argv){
-    bool ll = 0;
-    bool optimisation = 0;
-    bool print = 0;
+    ll = 0;
+    optimisation = 0;
+    print = 0;
     char stdlib_path[] = "include/stdlib.ql";
 
     // first we process all input args: flags and files
@@ -97,8 +98,7 @@ int main(int argc, char **argv){
         if(print) printf("\n\n");
         
 
-         if(ll) generate_QIR(0, root);
-         else generate_QIR(1, root);
+        generate_QIR(root);
 
         // atm for tests, we immediatly free the list
         // in the future we will have to save all lists

@@ -1,24 +1,35 @@
 #include "generator.h"
+#include "global_flags.h"
+
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/BitWriter.h>
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 #define QIR_MAJOR_VERSION 2
 #define QIR_MINOR_VERSION 0
 #define ADAPTIVE 0
 
-// since we need to assign measure attributes in the main function, we define it in the main function
+// we can define measure and result functions only once
+// to use them in other functions, we need them to be global
 static LLVMTypeRef measure_type;
 static LLVMValueRef measure_function;
 
 static LLVMTypeRef result_type;
 static LLVMValueRef result_function;
 
+// to avoid redefinitions we store these globally
 static LLVMTypeRef ptr_type;
 static LLVMTypeRef void_type;
+static LLVMTypeRef int_type;
+
+// the number of qubits that are declared and returned is counted dynamically
+static int required_num_qubits = 2;
+static int required_num_results = 2;
 
 void call_function(qir_context qir, ast *node, char *name){
     LLVMTypeRef f_type;
@@ -102,7 +113,7 @@ void generate_instructions(qir_context qir, ast *node){
 }
 
 
-FILE *generate_QIR(bool bitcode, ast *root){
+FILE *generate_QIR(ast *root){
     // setup for var_array and qir_context
     LLVMValueRef *var_array;
     qir_context qir;
@@ -139,20 +150,16 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMPositionBuilderAtEnd(qir.builder, entry);
 
 
-    LLVMValueRef **llvm_list = analyse_ast(root);
-    if(llvm_list == NULL) goto end;
+    int size = analyse_ast(root);
+    if(size == -1){
+        LLVMDisposeBuilder(qir.builder);
+        LLVMDisposeModule(qir.module);
+        LLVMContextDispose(qir.context);
+        return NULL;
+    }
     
     generate_instructions(qir, root);
     
-    // free the llvm pointers
-    int i = 0;
-    LLVMValueRef *llvm = llvm_list[i];
-    while(llvm != NULL){
-        i++;
-        free(llvm);
-        llvm = llvm_list[i];
-    }
-    free(llvm_list);
 
     //LLVMBuildCall2(qir.builder, result_type, result_function, mz, 2, "");
 
@@ -160,12 +167,21 @@ FILE *generate_QIR(bool bitcode, ast *root){
     // return void
     LLVMBuildRetVoid(qir.builder);
 
+    // convert the number of qubits and results to strings
+    int len_qubits = floor(log10(required_num_qubits)) + 1; // this calculates the number of chars
+    char *str_qubits = malloc(len_qubits+1);
+    sprintf(str_qubits, "%d", required_num_qubits);
+
+    int  len_results = floor(log10(required_num_results)) + 1; 
+    char *str_results = malloc(len_results+1);
+    sprintf(str_results, "%d", required_num_results);
+
     // define all attributes
     LLVMAttributeRef entryAttribute = LLVMCreateStringAttribute(qir.context, "entry_point", 11, "", 0);
     LLVMAttributeRef labelingAttribute = LLVMCreateStringAttribute(qir.context, "output_labeling_schema", 22, "", 0);
     LLVMAttributeRef profileAttribute = LLVMCreateStringAttribute(qir.context, "qir_profile", 11, "base_profile", 12);
-    LLVMAttributeRef qubitsAttribute = LLVMCreateStringAttribute(qir.context, "required_num_qubits", 19, "1", 1);
-    LLVMAttributeRef resultsAttribute = LLVMCreateStringAttribute(qir.context, "required_num_results", 20, "1", 1);
+    LLVMAttributeRef qubitsAttribute = LLVMCreateStringAttribute(qir.context, "required_num_qubits", 19, str_qubits, len_qubits);
+    LLVMAttributeRef resultsAttribute = LLVMCreateStringAttribute(qir.context, "required_num_results", 20, str_results, len_results);
 
     LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, entryAttribute);
     LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, labelingAttribute);
@@ -193,12 +209,14 @@ FILE *generate_QIR(bool bitcode, ast *root){
     LLVMAddModuleFlag(qir.module, LLVMModuleFlagBehaviorError, "dynamic_qubit_management", 24, meta_dynamic_qu);
     LLVMAddModuleFlag(qir.module, LLVMModuleFlagBehaviorError, "dynamic_result_management", 25, meta_dynamic_res);
 
+    free(str_qubits);
+    free(str_results);
 
     // string for error handling
     char *error = NULL;
     FILE *output = NULL;
     // if bitcode is set, we generate a .bc file
-    if(bitcode){
+    if(!ll){
         if(LLVMWriteBitcodeToFile(qir.module, "output.bc") != 0){
             fprintf(stderr, "Error writing to .bc file\n");
             return NULL;
@@ -217,7 +235,7 @@ FILE *generate_QIR(bool bitcode, ast *root){
         fprintf(stderr, "Unable to open output file\n");
         return NULL;
     }
-    end:
+
     LLVMDisposeBuilder(qir.builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);
