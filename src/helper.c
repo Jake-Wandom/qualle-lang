@@ -36,6 +36,18 @@ void print_ast(ast *root, int level){
                 case VAR_VOID:
                     str = "void";
                     break;
+                case VAR_VECTOR:
+                    str = "vector";
+                    break;
+                case VAR_DOUBLE:
+                    str = "double";
+                    break;
+                case VAR_INTEGER:
+                    str = "integer";
+                    break;
+                case VAR_NATURAL:
+                    str = "natural";
+                    break;
                 default:
             }
             printf("├── TYPE: '%s'\n", str);
@@ -162,7 +174,32 @@ void print_var_list(variable *var_list, size_t size){
     printf("\n");
     printf("SIZE: %lu\n", size);
     for(int i = 0; i < size; i++){
-        printf("Var %i: '%s' = %s\n", i, var_list[i].name, var_list[i].value);
+        char *str = "default";
+            switch(var_list[i].type){
+                case VAR_QUBIT:
+                    str = "qubit";
+                    break;
+                case VAR_BIT:
+                    str = "bit";
+                    break;
+                case VAR_VOID:
+                    str = "void";
+                    break;
+                case VAR_VECTOR:
+                    str = "vector";
+                    break;
+                case VAR_DOUBLE:
+                    str = "double";
+                    break;
+                case VAR_INTEGER:
+                    str = "integer";
+                    break;
+                case VAR_NATURAL:
+                    str = "natural";
+                    break;
+                default:
+            }
+        printf("Var %i: %s '%s' = %s\n", i, str, var_list[i].name, var_list[i].value);
     }
 }
 

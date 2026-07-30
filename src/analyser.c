@@ -39,7 +39,7 @@ int lookup_var(char *name, variable *variable_list, size_t size){
 
     for(int i = 0; i < size; i++){
         if(variable_list[i].name == NULL){
-            return (i+1)*-1;
+            break;
         }
 
         if(strcmp(variable_list[i].name, name) == 0){
@@ -47,7 +47,7 @@ int lookup_var(char *name, variable *variable_list, size_t size){
         }
     }
     // not in the list
-    return INT32_MAX;
+    return -1;
 }
 
 int add_var(variable new_var, variable *variable_list, size_t size){
@@ -57,8 +57,17 @@ int add_var(variable new_var, variable *variable_list, size_t size){
         // already in the list
         return -1;
     }
+    
+    // finding the next variable slot
+    for(int i = 0; i < size; i++){
+        if(variable_list[i].name == NULL){
+            pos = i;
+            break;
+        }
+    }
 
-    pos = (pos+1)*-1;
+    if(pos < 0) return -1;
+
     variable_list[pos] = new_var;
     return pos;
 }
@@ -79,7 +88,6 @@ variable analyse_type(ast *node, variable *variable_list, size_t size){
         return (variable){-1};
     }
     node->branch->llvm = new_var.llvm;
-    
     
     return new_var;
 }
@@ -185,7 +193,7 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
     }
 }
 
-LLVMValueRef** analyse_ast(ast *root){
+int analyse_ast(ast *root){
     
     size_t size = count_nodes(root);
     variable *variable_list = calloc(size, sizeof(variable));
@@ -193,17 +201,12 @@ LLVMValueRef** analyse_ast(ast *root){
     int res = walk_ast(root, variable_list, size);
     if(res != 0){
         fprintf(stderr, "Something went wrong during analyse\n");
-        return NULL;
+        return -1;
     }
     
     print_var_list(variable_list, size);
-    // create the llvm_list
-    LLVMValueRef **llvm_list = calloc(size+1, sizeof(LLVMValueRef*));
-    for(int i = 0; i < size; i++){
-        llvm_list[i] = variable_list[i].llvm;
-    }
     // release the list!
     free_var_list(variable_list, size);
     free(variable_list);
-    return llvm_list;
+    return (int)size;
 }

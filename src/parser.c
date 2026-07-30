@@ -390,6 +390,8 @@ ast* parse_call(ast *current_node){
             temp_node = iden_node;
             continue;
 
+        } else if(current_token->type == DELIMITER){
+            switch_token(1);
         } else {
             handle_error(current_token, 0, "Expected Number or Identifier in function call");
             return NULL;
