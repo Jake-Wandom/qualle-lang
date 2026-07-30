@@ -2,5 +2,9 @@
 qubit q;
 bit b;
 void v;
-H(q);
-measure(q);
+int i;
+uint u;
+N n;
+Z z;
+double d;
+vector vec;
