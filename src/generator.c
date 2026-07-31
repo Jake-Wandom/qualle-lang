@@ -170,11 +170,11 @@ FILE *generate_QIR(ast *root){
     // convert the number of qubits and results to strings
     int len_qubits = floor(log10(required_num_qubits)) + 1; // this calculates the number of chars
     char *str_qubits = malloc(len_qubits+1);
-    sprintf(str_qubits, "%d", required_num_qubits);
+    snprintf(str_qubits, len_qubits+1, "%d", required_num_qubits);
 
     int  len_results = floor(log10(required_num_results)) + 1; 
     char *str_results = malloc(len_results+1);
-    sprintf(str_results, "%d", required_num_results);
+    snprintf(str_results, len_results+1, "%d", required_num_results);
 
     // define all attributes
     LLVMAttributeRef entryAttribute = LLVMCreateStringAttribute(qir.context, "entry_point", 11, "", 0);
