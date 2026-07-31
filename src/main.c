@@ -11,6 +11,7 @@ int main(int argc, char **argv){
     ll = 0;
     optimisation = 0;
     print = 0;
+    adaptive = 0;
     char stdlib_path[] = "include/stdlib.ql";
 
     // first we process all input args: flags and files
@@ -39,6 +40,9 @@ int main(int argc, char **argv){
                     break;
                 case 'p':
                     print = 1;
+                    break;
+                case 'a':
+                    adaptive = 1;
                     break;
                 default:
                     fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
