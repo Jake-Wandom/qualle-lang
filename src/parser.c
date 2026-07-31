@@ -5,7 +5,10 @@
 
 static token *current_token;
 static ast *last_eol;
-static bool in_assign = 0;
+
+static bool in_parameters;
+static bool in_function;
+static bool in_assign;
 
 /*
 creates a new node with all pointer values set to NULL
@@ -42,36 +45,50 @@ void switch_token(int num){
     }
 }
 
-void handle_error(token *error_token, enum error_type type, char *error_message){
+/*
+Error function for the parser
+Needs the token where the error occured and a type and custom message
+*/
+void parse_error(token *error_token, enum error_type type, char *error_message){
 
+    fprintf(stderr, "DURING PARSING: ");
     switch (type){
         case UNEXPECTED_ERROR:
-            printf("UNEXPECTED ERROR: %s\n", error_message);
+            fprintf(stderr, "UNEXPECTED ERROR: %s\n", error_message);
             break;
         case WRONG_TYPE_ERROR:
-            printf("WRONG TYPE ERROR: %s\n", error_message);
+            fprintf(stderr, "WRONG TYPE ERROR: %s\n", error_message);
             break;
         case UNKOWN_SYMBOL_ERROR:
-            printf("UNKOWN SYMBOL ERROR: %s\n", error_message);
+            fprintf(stderr, "UNKOWN SYMBOL ERROR: %s\n", error_message);
             break;
         case NO_CONTEXT_ERROR:
-            printf("NO CONTEXT ERROR: %s\n", error_message);
+            fprintf(stderr, "NO CONTEXT ERROR: %s\n", error_message);
             break;
         case UNKOWN_TYPE_ERROR:
-            printf("MISSING VARIABLE ERROR: %s\n", error_message);
+            fprintf(stderr, "MISSING VARIABLE ERROR: %s\n", error_message);
+            break;
+        case FORBIDDEN_ERROR:
+            fprintf(stderr, "FORBIDDEN ERROR: %s\n", error_message);
             break;
         default:
-            printf("ERROR: %s\n", error_message);
+            fprintf(stderr, "ERROR: %s\n", error_message);
     }
     // locate position
-    printf("line %i ", error_token->line);
+    fprintf(stderr, "line %i ", error_token->line);
     if((error_token->type == INDICATOR) || (error_token->type == NUMBER)){
-        printf("->%s<-\n\n", error_token->value);
+        fprintf(stderr, "line %i    ->%s<-\n\n", error_token->line, error_token->value);
     } else if((error_token->type != START) && (error_token->type != END)){
-        printf("->%c<-\n\n", *(error_token->value));
+        fprintf(stderr, "line %i    ->%c<-\n\n", error_token->line, *(error_token->value));
+    } else {
+        fprintf(stderr, "line %i\n\n", error_token->line);
     }
 }
 
+/*
+This rather complicated function ensures the correct syntax for a function
+The parameters and body are parsed recursively, since closed brackets are a terminator for parse_start
+*/
 ast* parse_function(ast *current_node){
     ast *new_node = create_node();
     new_node->type = FUNCTION;
@@ -80,7 +97,7 @@ ast* parse_function(ast *current_node){
     switch_token(1);
 
     if(current_token->type != INDICATOR){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected function name");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected function name");
         return NULL;
     }
 
@@ -93,7 +110,7 @@ ast* parse_function(ast *current_node){
     switch_token(1);
 
     if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '(')){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected '(' in function definition");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected '(' in function definition");
         return NULL;
     }
 
@@ -102,7 +119,9 @@ ast* parse_function(ast *current_node){
     // create subtree with all variables
     ast *temp_node = create_node();
     
+    in_parameters = 1;
     parse_start(temp_node);
+    in_parameters = 0;
     
     new_node->left = temp_node->branch;
 
@@ -115,14 +134,14 @@ ast* parse_function(ast *current_node){
     }   
 
     if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != ')')){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected ')' in function definition");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected ')' in function definition");
         return NULL;
     }
 
     switch_token(1);
 
     if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected '{' in function definition");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected '{' in function definition");
         return NULL;
     }
 
@@ -131,7 +150,9 @@ ast* parse_function(ast *current_node){
     temp_node->branch = NULL;
     temp_node->value = NULL;
     
+    in_function = 1;
     parse_start(temp_node);
+    in_function = 0;
     
     new_node->right = temp_node->branch;
     free(temp_node);
@@ -145,7 +166,7 @@ ast* parse_function(ast *current_node){
     }   
 
     if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected '}' after function");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected '}' after function");
         return NULL;
     }
 
@@ -157,7 +178,7 @@ ast* parse_include(ast *current_node){
     switch_token(1);
 
     if(current_token->type != INDICATOR){
-        handle_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
+        parse_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
     }
     ast *new_node = create_node();
     new_node->type = INCLUDE;
@@ -170,21 +191,21 @@ ast* parse_include(ast *current_node){
     switch_token(1);
 
     if(current_token->type != DELIMITER){
-        handle_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
+        parse_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
         return NULL;
     }
     
     switch_token(1);
 
     if((current_token->type != INDICATOR) || (strcmp(current_token->value, "ql") != 0)){
-        handle_error(current_token, UNEXPECTED_ERROR, "include needs to link to a .ql file");
+        parse_error(current_token, UNEXPECTED_ERROR, "include needs to link to a .ql file");
         return NULL;
     }
 
     switch_token(1);
 
     if(current_token->type != END_OF_LINE){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected ';' or linebreak at the end of include");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected ';' or linebreak at the end of include");
         return NULL;
     }
     return parse_start(new_node);
@@ -198,7 +219,7 @@ ast* parse_type(ast *current_node){
     enum variable_type type;
 
     if(current_token->type != INDICATOR){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected variable type");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected variable type");
         return NULL;
     }
 
@@ -253,10 +274,10 @@ ast* parse_type(ast *current_node){
 
 ast *parse_assign(ast *current_node){
     if(last_eol == NULL){
-        handle_error(current_token, MISSING_ERROR, "Assignment unable to be parsed");
+        parse_error(current_token, MISSING_ERROR, "Assignment unable to be parsed");
         return NULL;
     } else if(in_assign){
-        handle_error(current_token, FORBIDDEN_ERROR, "Cannot call assign in an assign");
+        parse_error(current_token, FORBIDDEN_ERROR, "Cannot call assign in an assign");
         return NULL;
     }
 
@@ -292,7 +313,7 @@ ast *parse_assign(ast *current_node){
     }   
 
     if(current_token->type != END_OF_LINE){
-        handle_error(current_token, UNEXPECTED_ERROR, "Expected ';' after assignment");
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected ';' after assignment");
         return NULL;
     }  
 
@@ -321,7 +342,7 @@ ast* parse_measure(ast *current_node){
     switch_token(2);
 
     if(current_token->type != INDICATOR){
-        handle_error(current_token, 0, "Expected qubit to measure");
+        parse_error(current_token, 0, "Expected qubit to measure");
         return NULL;
     }
 
@@ -399,8 +420,11 @@ ast* parse_call(ast *current_node){
 
         } else if(current_token->type == DELIMITER){
             switch_token(1);
+        } else if(current_token->type == END_OF_LINE){
+            parse_error(current_token, MISSING_ERROR, "Missing ')' in function call");
+            return NULL;
         } else {
-            handle_error(current_token, 0, "Expected Number or Identifier in function call");
+            parse_error(current_token, UNEXPECTED_ERROR, "Expected Number or Identifier in function call");
             return NULL;
         }
 
@@ -517,33 +541,71 @@ ast* parse_start(ast *current_node){
             last_eol = current_node;
             if(in_assign){
                 return current_node;
+            } else if(in_parameters){
+                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in function parameters");
+                return NULL;
             }
             switch_token(1);
             return parse_start(current_node);
         
         case OPERATOR:
+            if(in_parameters){
+                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in function parameters");
+                return NULL;
+            }
             return parse_operator(current_node);
 
         case START:
         case COMMENT:
+            if(in_parameters){
+                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in function parameters");
+                return NULL;
+            }
             switch_token(1);
             return parse_start(current_node);
 
         case BRACKET_CLOSE:
+            if(in_parameters){
+                if(*(current_token->value) == ')'){
+                    return current_node;
+                }
+            } else if(in_function){
+                if(*(current_token->value) == '}'){
+                    return current_node;
+                }
+            } else {
+                parse_error(current_token, MISSING_ERROR, "Missing open bracket");
+                return NULL;
+            }
+            
         case END:
+            if(in_parameters){
+                parse_error(current_token, MISSING_ERROR, "Missing ')' in function parameters");
+                return NULL;
+            } else if(in_function){
+                parse_error(current_token, MISSING_ERROR, "Missing '}' in function body");
+                return NULL;
+            }
             return current_node;
 
         default:
-            handle_error(current_token, 0, "Not recognised in this context");
+            if(in_parameters || in_function || in_assign){
+                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in this context");
+                return NULL;
+            }
+            parse_error(current_token, 0, "Not recognised in this context");
         }
     return current_node;
 }
 
 ast* generate_ast(token *first_token){
     // initialisations
+    in_function = 0;
+    in_parameters = 0;
+    in_assign = 0;
+
     current_token = first_token;
     ast *root = create_node();
-    in_assign = 0;
     last_eol = root;
 
     if(parse_start(root) == NULL){
