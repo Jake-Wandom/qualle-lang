@@ -7,12 +7,43 @@
 #include <string.h>
 #include <stdbool.h>
 
+void analyse_error(ast *error_node, enum error_type type, char *error_message){
+    fprintf(stderr, "DURING ANALYSIS: ");
+    switch (type){
+        case UNEXPECTED_ERROR:
+            fprintf(stderr, "UNEXPECTED ERROR: %s\n", error_message);
+            break;
+        case WRONG_TYPE_ERROR:
+            fprintf(stderr, "WRONG TYPE ERROR: %s\n", error_message);
+            break;
+        case UNKOWN_SYMBOL_ERROR:
+            fprintf(stderr, "UNKOWN SYMBOL ERROR: %s\n", error_message);
+            break;
+        case NO_CONTEXT_ERROR:
+            fprintf(stderr, "NO CONTEXT ERROR: %s\n", error_message);
+            break;
+        case UNKOWN_TYPE_ERROR:
+            fprintf(stderr, "MISSING VARIABLE ERROR: %s\n", error_message);
+            break;
+        case FORBIDDEN_ERROR:
+            fprintf(stderr, "FORBIDDEN ERROR: %s\n", error_message);
+            break;
+        default:
+            fprintf(stderr, "ERROR: %s\n", error_message);
+    }
+    // locate position
+    if((error_node->type == IDENTIFIER) || (error_node->type == NAME) || (error_node->type == VALUE)){
+        fprintf(stderr, "line %i    ->%s<-\n\n", error_node->line, error_node->value);
+    } else {
+        fprintf(stderr, "line %i\n\n", error_node->line);
+    }
+}
+
 int count_nodes(ast *root){
     if(root == NULL) return 0;
     switch(root->type){
         case TYPE:
             return count_nodes(root->branch)+1;
-        case FUNCTION:
         case ASSIGN:
             return count_nodes(root->left)+count_nodes(root->right)+count_nodes(root->branch);
         case CALL:
@@ -85,7 +116,7 @@ variable analyse_type(ast *node, variable *variable_list, size_t size){
     variable new_var = create_var(node->var_type, node->branch->name);
     int pos = add_var(new_var, variable_list, size);
     if(pos == -1){
-        fprintf(stderr, "Variable with the same name already declared\n");
+        analyse_error(node->branch, NAME_CONFLICT_ERROR, "Variable with the same name already declared");
         return (variable){-1};
     }
     node->branch->llvm = new_var.llvm;
@@ -98,15 +129,17 @@ int check_parameters(ast *node, int num_param, variable *variable_list, size_t s
         if(node->type == IDENTIFIER){
             int pos = lookup_var(node->name, variable_list, size);
             if(pos < 0){
-                fprintf(stderr, "Unkown variable\n");
+                analyse_error(node, MISSING_ERROR, "Unkown Variable");
                 return -1;
             }
             node->llvm = variable_list[pos].llvm;
             node->resolved_type = variable_list[pos].type;
+
         } else if(node->type == NUMBER){
             node->resolved_type = check_type(node->value);
+
         } else {
-            fprintf(stderr, "Function call should only have identifiers and numbers");
+            analyse_error(node, FORBIDDEN_ERROR, "Function call should only have identifiers and numbers");
             return -1;
         }
         node = node->branch;
@@ -132,16 +165,21 @@ int analyse_left(ast *node, variable *variable_list, size_t size){
     if(node->type == IDENTIFIER){
         int pos = lookup_var(node->name, variable_list, size);
         if(pos < 0) return -1;
+
         return pos;
+
     } else if(node->type == TYPE){
         variable new_var = analyse_type(node, variable_list, size);
         if(new_var.type == -1) return -1;
+
         node->branch->llvm = new_var.llvm;
         int pos = lookup_var(node->branch->name, variable_list, size);
+
         if(pos < 0) return -1;
         else return pos;
+
     } else {
-        fprintf(stderr, "Expected Variable definition or reference left of assign\n");
+        analyse_error(node, UNEXPECTED_ERROR, "Expected Variable definition or reference left of assign");
         return -1;
     }
 }
@@ -193,7 +231,7 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
         case IDENTIFIER:
             int pos = lookup_var(node->name, variable_list, size);
             if(pos < 0){
-                fprintf(stderr, "Variable not in the list\n");
+                analyse_error(node, MISSING_ERROR, "Unknown Variable");
                 return -1;
             }
             node->llvm = variable_list[pos].llvm;
@@ -209,7 +247,7 @@ int analyse_ast(ast *root){
     
     int res = walk_ast(root, variable_list, size);
     if(res != 0){
-        fprintf(stderr, "Something went wrong during analyse\n");
+        fprintf(stderr, "\nERROR DURING ANALYSIS\n");
         return -1;
     }
     
