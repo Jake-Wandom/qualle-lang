@@ -147,7 +147,6 @@ token* check_token(char chr, token* current_token){
             current_token->type = OPERATOR;
             current_token->value = malloc(sizeof(char));
             *(current_token->value) = chr;
-            printf("char??? %c %i", *(current_token->value), *(current_token->value));
             break;
         
         // currently only letters and _ can be used for variable names and definitions, this could change in the future

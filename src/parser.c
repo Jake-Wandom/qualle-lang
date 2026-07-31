@@ -252,16 +252,25 @@ ast* parse_type(ast *current_node){
 }
 
 ast *parse_assign(ast *current_node){
+    if(last_eol == NULL){
+        handle_error(current_token, MISSING_ERROR, "Assignment unable to be parsed");
+        return NULL;
+    } else if(in_assign){
+        handle_error(current_token, FORBIDDEN_ERROR, "Cannot call assign in an assign");
+        return NULL;
+    }
+
     ast *left = last_eol->branch;
     ast *temp_node = create_node();
 
-    current_node = create_node();
-    current_node->type = ASSIGN;
-    current_node->value = malloc(1);
-    *(current_node->value) = *(current_token->value);
-    current_node->left = left;
+    ast *new_node = create_node();
+    new_node->type = ASSIGN;
+    new_node->value = malloc(1);
+    *(new_node->value) = *(current_token->value);
+    new_node->left = left;
 
-    last_eol->branch = current_node;
+    last_eol->branch = new_node;
+    last_eol = NULL;
     
     switch_token(1);
     
@@ -269,7 +278,7 @@ ast *parse_assign(ast *current_node){
     parse_start(temp_node);
     in_assign = 0;
     
-    current_node->right = temp_node->branch;
+    new_node->right = temp_node->branch;
     free(temp_node);
 
 
@@ -286,9 +295,8 @@ ast *parse_assign(ast *current_node){
         handle_error(current_token, UNEXPECTED_ERROR, "Expected ';' after assignment");
         return NULL;
     }  
-    switch_token(1);
 
-    return parse_start(current_node);
+    return parse_start(new_node);
 }
 
 /*
@@ -358,10 +366,9 @@ ast* parse_call(ast *current_node){
             number_node->type = VALUE;
             temp_node->branch = number_node;
 
-            size_t size = strlen(current_token->value)+1;
-            number_node->value = calloc(1, size);
-
-            strncpy(number_node->value, current_token->value, size);
+            size_t number_size = strlen(current_token->value)+1;
+            number_node->value = calloc(1, number_size);
+            strncpy(number_node->value, current_token->value, number_size);
 
             switch_token(1);
 
@@ -369,7 +376,7 @@ ast* parse_call(ast *current_node){
             if(current_token->type == DELIMITER){
                 switch_token(1);
                 if(current_token->type == NUMBER){
-                    realloc(number_node->value, size+strlen(current_token->value));
+                    number_node->value = realloc(number_node->value, size+strlen(current_token->value));
                     strcat(number_node->value, current_token->value);
                     switch_token(1);
                 }
@@ -381,9 +388,9 @@ ast* parse_call(ast *current_node){
             ast *iden_node = create_node();
             iden_node->type = IDENTIFIER;
 
-            size_t size = strlen(current_token->value)+1;
-            iden_node->name = calloc(1, size);
-            strncpy(iden_node->name, current_token->value, size);
+            size_t name_size = strlen(current_token->value)+1;
+            iden_node->name = calloc(1, name_size);
+            strncpy(iden_node->name, current_token->value, name_size);
 
             temp_node->branch = iden_node;
             switch_token(1);
@@ -479,7 +486,7 @@ ast* parse_number(ast *current_node){
     if(current_token->type == DELIMITER){
         switch_token(1);
         if(current_token->type == NUMBER){
-            realloc(new_node->value, size+strlen(current_token->value));
+            new_node->value = realloc(new_node->value, size+strlen(current_token->value));
             strcat(new_node->value, current_token->value);
             switch_token(1);
         }
