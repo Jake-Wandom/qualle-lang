@@ -1,5 +1,6 @@
-#include "analyser.h"
 #include "helper.h"
+#include "global_flags.h"
+#include "analyser.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -136,7 +137,7 @@ int analyse_left(ast *node, variable *variable_list, size_t size){
         variable new_var = analyse_type(node, variable_list, size);
         if(new_var.type == -1) return -1;
         node->branch->llvm = new_var.llvm;
-        int pos = lookup_var(node->name, variable_list, size);
+        int pos = lookup_var(node->branch->name, variable_list, size);
         if(pos < 0) return -1;
         else return pos;
     } else {
@@ -147,15 +148,17 @@ int analyse_left(ast *node, variable *variable_list, size_t size){
 
 char* analyse_right(ast *node, variable *variable_list, size_t size){
     // MUCH TODO HERE
-    if(node->type == NUMBER){
+    if(node->type == VALUE){
         return node->value;
     } else {
+        fprintf(stderr, "Unable to analyse right side of assign\n");
         return NULL;
     }
 }
 
 int walk_ast(ast *node, variable *variable_list, size_t size){
     if(node == NULL) return 0;
+    int res;
     
     switch(node->type){
         case TYPE:
@@ -166,15 +169,21 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
             break;
 
         case CALL:
-            int res = analyse_call(node, variable_list, size);
+            res = analyse_call(node, variable_list, size);
             if(res == -1) return -1;
             return walk_ast(node->branch, variable_list, size);
             break;
 
         case ASSIGN:
-            int r = analyse_left(node->left, variable_list, size);
+            res = analyse_left(node->left, variable_list, size);
             if(res == -1) return -1;
-            variable_list[res].value = analyse_right(node->right, variable_list, size);
+
+            char *value = analyse_right(node->right, variable_list, size);
+            size_t value_size = strlen(value)+1;
+            variable_list[res].value = malloc(value_size);
+            strncpy(variable_list[res].value, value, value_size);
+            
+            return walk_ast(node->branch, variable_list, size);
             break;
 
         case FUNCTION:
@@ -204,7 +213,7 @@ int analyse_ast(ast *root){
         return -1;
     }
     
-    print_var_list(variable_list, size);
+    if(print) print_var_list(variable_list, size);
     // release the list!
     free_var_list(variable_list, size);
     free(variable_list);
