@@ -5,9 +5,9 @@
 #include <stdbool.h>
 
 // global variables for check_token
-static bool space = 0;
-static bool comment_ignore = 0;
-static int current_line = 1;
+static bool space;
+static bool comment_ignore;
+static int current_line;
 
 /*
 creates a new token with unkown type and appends it in the token linked list
@@ -216,6 +216,9 @@ generates a linked list of tokens from the given buffer
 returns the first token of the list
 */
 token* get_token(char* buffer){
+    space = 0;
+    comment_ignore = 0;
+    current_line = 1;
     // make sure we are starting with a fresh token list
     // the main function has to keep track of old lists and free them
     
@@ -226,6 +229,7 @@ token* get_token(char* buffer){
     first_token->type = START;
     first_token->next_token = NULL;
     first_token->value = NULL;
+    first_token->line = -1;
     
     // checking if the string contains \0 to mark the end. We don't have a length so we do not know, if this is the intended end of string.
     if(!strchr(buffer, '\0')){
@@ -243,9 +247,6 @@ token* get_token(char* buffer){
     // create the end token
     current_token = create_token(current_token);
     current_token->type = END;
-    space = 0;
-    comment_ignore = 0;
-    current_line = 1;
     
     if(first_token == NULL){
         fprintf(stderr, "Token list empty\n");
