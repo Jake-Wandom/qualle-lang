@@ -6,5 +6,6 @@
 bool ll;
 bool optimisation;
 bool print;
+bool adaptive;
 
 #endif
