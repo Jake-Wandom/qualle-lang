@@ -27,6 +27,8 @@ static LLVMTypeRef ptr_type;
 static LLVMTypeRef void_type;
 static LLVMTypeRef int_type;
 
+static LLVMValueRef **llvm_list;
+
 // the number of qubits that are declared and returned is counted dynamically
 static int required_num_qubits = 2;
 static int required_num_results = 2;
@@ -102,6 +104,7 @@ void generate_instructions(qir_context qir, ast *node){
                 return;
             }
             *(node->branch->llvm) = add_value(qir, node->var_type, 0);
+            // TODO llvm_list
             
         case ASSIGN:
             break;
@@ -157,6 +160,9 @@ FILE *generate_QIR(ast *root){
         LLVMContextDispose(qir.context);
         return NULL;
     }
+
+    // create a list for all llvm pointers
+    llvm_list = calloc(size, sizeof(LLVMValueRef*));
     
     generate_instructions(qir, root);
     
