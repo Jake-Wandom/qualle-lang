@@ -3,9 +3,9 @@
 
 #include <stdbool.h>
 
-bool ll;
-bool optimisation;
-bool print;
-bool adaptive;
+extern bool ll;
+extern bool optimisation;
+extern bool print;
+extern bool adaptive;
 
 #endif

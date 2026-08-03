@@ -14,6 +14,8 @@
 #define QIR_MINOR_VERSION 0
 #define ADAPTIVE 0
 
+bool ll = 0;
+
 // we can define measure and result functions only once
 // to use them in other functions, we need them to be global
 static LLVMTypeRef measure_type;

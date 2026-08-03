@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdbool.h>
 
+bool print = 0;
+
 void analyse_error(ast *error_node, enum error_type type, char *error_message){
     fprintf(stderr, "DURING ANALYSIS: ");
     switch (type){

@@ -8,10 +8,11 @@
 #include <stdbool.h>
 
 int main(int argc, char **argv){
+    // ll and print have been declared in the generator and analyser
     ll = 0;
-    optimisation = 0;
     print = 0;
-    adaptive = 0;
+    bool optimisation = 0;
+    bool adaptive = 0;
     char stdlib_path[] = "include/stdlib.ql";
 
     // first we process all input args: flags and files
