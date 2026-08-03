@@ -11,7 +11,7 @@ DEP_DIR := build/dep
 # Compiler and Flags
 CC := gcc
 CFLAGS := -fPIC -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wstrict-prototypes -I$(INC_DIR) # removed -Wmissing-prototypes
-LDFLAGS := 
+LDFLAGS := -lm
 LIBS :=
 
 # Debug (make DEBUG=1)
