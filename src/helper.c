@@ -257,5 +257,7 @@ void free_var_list(variable *var_list, size_t size){
     for(int i = 0; i < size; i++){
         free(var_list[i].name);
         free(var_list[i].value);
+        free(var_list[i].llvm);
     }
+    free(var_list);
 }
