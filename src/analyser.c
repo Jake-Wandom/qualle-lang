@@ -242,7 +242,7 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
     }
 }
 
-int analyse_ast(ast *root){
+variable* analyse_ast(ast *root){
     
     size_t size = count_nodes(root);
     variable *variable_list = calloc(size, sizeof(variable));
@@ -250,12 +250,10 @@ int analyse_ast(ast *root){
     int res = walk_ast(root, variable_list, size);
     if(res != 0){
         fprintf(stderr, "\nERROR DURING ANALYSIS\n");
-        return -1;
+        return NULL;
     }
     
     if(print) print_var_list(variable_list, size);
-    // release the list!
-    free_var_list(variable_list, size);
-    free(variable_list);
-    return (int)size;
+    
+    return variable_list;
 }
