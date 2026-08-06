@@ -1,23 +1,41 @@
 ; ModuleID = 'QUALLE_module'
 source_filename = "QUALLE_module"
 
-declare void @__quantum__rt__initialize(ptr)
+@"0" = internal constant [3 x i8] c"r0\00"
+@"1" = internal constant [3 x i8] c"r1\00"
 
-define void @main() #0 {
+define i64 @main() #0 {
 entry:
+  call void @__quantum__rt__initialize(ptr null)
+  br label %body
+
+body:                                             ; preds = %entry
   call void @__quantum__qis__h__body(ptr null)
+  call void @__quantum__qis__cnot__body(ptr null, ptr inttoptr (i64 1 to ptr))
+  br label %measure
+
+measure:                                          ; preds = %body
   call void @__quantum__qis__mz__body(ptr null, ptr null)
-  call void @__quantum__rt__result_record_output(ptr null, ptr null)
-  ret void
+  call void @__quantum__qis__mz__body(ptr inttoptr (i64 1 to ptr), ptr inttoptr (i64 1 to ptr))
+  br label %output
+
+output:                                           ; preds = %measure
+  call void @__quantum__rt__result_record_output(ptr null, ptr @"0")
+  call void @__quantum__rt__result_record_output(ptr inttoptr (i64 1 to ptr), ptr @"1")
+  ret i64 0
 }
 
-declare void @__quantum__qis__mz__body(ptr, ptr) #1
+declare void @__quantum__qis__mz__body(ptr, ptr writeonly) #1
 
 declare void @__quantum__rt__result_record_output(ptr, ptr)
 
+declare void @__quantum__rt__initialize(ptr)
+
 declare void @__quantum__qis__h__body(ptr)
 
-attributes #0 = { "entry_point" "output_labeling_schema" "qir_profile"="base_profile" "required_num_qubits"="1" "required_num_results"="1" }
+declare void @__quantum__qis__cnot__body(ptr, ptr)
+
+attributes #0 = { "entry_point" "output_labeling_schema" "qir_profiles"="base_profile" "required_num_qubits"="2" "required_num_results"="2" }
 attributes #1 = { "irreversible" }
 
 !llvm.module.flags = !{!0, !1, !2, !3}
