@@ -7,13 +7,11 @@
 #include <string.h>
 #include <stdbool.h>
 
+// ll and print have been declared in the generator and analyser
+bool optimisation = 0;
+
 int main(int argc, char **argv){
-    // ll and print have been declared in the generator and analyser
-    ll = 0;
-    print = 0;
-    bool optimisation = 0;
-    bool adaptive = 0;
-    char stdlib_path[] = "include/stdlib.ql";
+    //char stdlib_path[] = "include/stdlib.ql";
 
     // first we process all input args: flags and files
     // num_of_files and files contain all file pointers to file names from argv
@@ -25,29 +23,36 @@ int main(int argc, char **argv){
             if(strcmp(argv[i],"--help") == 0){
                 print_man_page();
                 return 0;
-            }
-            switch (argv[i][1]){
-                // help -> print man page
-                case 'h':
-                    print_man_page();
-                    return 0;
-                // qir -> generate quantum ir instead of bitcode
-                case 'l':
-                    ll = 1;
-                    break;
-                // optimise -> use optimisation strategies
-                case 'o':
-                    optimisation = 1;
-                    break;
-                case 'p':
-                    print = 1;
-                    break;
-                case 'a':
-                    adaptive = 1;
-                    break;
-                default:
-                    fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
-                    return 1;
+            } else if(strcmp(argv[i],"--optimise") == 0){
+                optimisation = 1;
+            } else if(strcmp(argv[i],"--print") == 0){
+                print = 1;
+            } else if(strcmp(argv[i],"--adaptive") == 0){
+                adaptive = 1;
+            } else {
+                switch (argv[i][1]){
+                    // help -> print man page
+                    case 'h':
+                        print_man_page();
+                        return 0;
+                    // qir -> generate quantum ir instead of bitcode
+                    case 'l':
+                        ll = 1;
+                        break;
+                    // optimise -> use optimisation strategies
+                    case 'o':
+                        optimisation = 1;
+                        break;
+                    case 'p':
+                        print = 1;
+                        break;
+                    case 'a':
+                        adaptive = 1;
+                        break;
+                    default:
+                        fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
+                        return 1;
+                }
             }
         } else {
             // if argv is not a flag we interpret it as a file path
@@ -69,7 +74,7 @@ int main(int argc, char **argv){
     size_t buffer_size = 0;
     size_t line_buffer_size = 4096;
 
-    // now repeat for all files
+    // repeat for all files
     for(int i = 0; i < num_of_files; i++){
         fseek(*(files+i), 0, SEEK_END);
         if(ftell(*(files+i)) > (long)buffer_size){
@@ -78,7 +83,8 @@ int main(int argc, char **argv){
         }
         rewind(*(files+i));
     }
-    if(print) printf("BUFFER SIZE: %lu, %lu\n", buffer_size, line_buffer_size);
+    if(print) printf("\nBUFFER SIZE: %lu, %lu\n", buffer_size, line_buffer_size);
+
 
     // now we process all files into token streams
     char* main_buffer = calloc(buffer_size, sizeof(char));
@@ -92,6 +98,7 @@ int main(int argc, char **argv){
             if(print )printf("%s", line_buffer);
             strcat(main_buffer, line_buffer);
         }
+
         if(print) printf("\n");
 
         first_token = get_token(main_buffer);
@@ -100,19 +107,20 @@ int main(int argc, char **argv){
         ast *root = generate_ast(first_token);
 
         if(print) print_ast(root, 1);
-        if(print) printf("\n\n");
+        if(print) printf("\n");
         
-
+        // call to generator
+        // the generator calls the analyser itself
         generate_QIR(root);
 
-        // atm for tests, we immediatly free the list
-        // in the future we will have to save all lists
-        free_token_list(first_token);
-        free_ast(root);
-
+        if(print) printf("\n\n");
+        
         // reset buffer
         zero_buffer(main_buffer, buffer_size);
         zero_buffer(line_buffer, line_buffer_size);
+        // release the list!
+        free_token_list(first_token);
+        free_ast(root);
     }
 
     // close all files and free all pointers
