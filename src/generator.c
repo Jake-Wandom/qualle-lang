@@ -13,7 +13,6 @@
 
 #define QIR_MAJOR_VERSION 2
 #define QIR_MINOR_VERSION 0
-#define ADAPTIVE 0
 
 bool ll = 0;
 
@@ -29,17 +28,79 @@ static int required_num_qubits = 0;
 static int required_num_results = 0;
 
 // dynamic array for measurement and output recording
-LLVMValueRef *result_list = NULL;
+static LLVMValueRef *result_list = NULL;
+static bool measured = 0;
 
 // global variables for function definitions
+static LLVMTypeRef measure_type;
+static LLVMValueRef measure_function;
 static LLVMTypeRef h_type;
 static LLVMValueRef h_function;
-static LLVMTypeRef cnot_type;
-static LLVMValueRef cnot_function;
+static LLVMTypeRef x_type;
+static LLVMValueRef x_function;
+static LLVMTypeRef y_type;
+static LLVMValueRef y_function;
+static LLVMTypeRef z_type;
+static LLVMValueRef z_function;
+static LLVMTypeRef rx_type;
+static LLVMValueRef rx_function;
+static LLVMTypeRef ry_type;
+static LLVMValueRef ry_function;
+static LLVMTypeRef rz_type;
+static LLVMValueRef rz_function;
+static LLVMTypeRef s_type;
+static LLVMValueRef s_function;
+static LLVMTypeRef t_type;
+static LLVMValueRef t_function;
+static LLVMTypeRef cx_type;
+static LLVMValueRef cx_function;
+static LLVMTypeRef cy_type;
+static LLVMValueRef cy_function;
+static LLVMTypeRef cz_type;
+static LLVMValueRef cz_function;
+static LLVMTypeRef swap_type;
+static LLVMValueRef swap_function;
+static LLVMTypeRef rxx_type;
+static LLVMValueRef rxx_function;
+static LLVMTypeRef ryy_type;
+static LLVMValueRef ryy_function;
+static LLVMTypeRef rzz_type;
+static LLVMValueRef rzz_function;
 
+void generator_error(ast *error_node, enum error_type type, char *error_message){
+    fprintf(stderr, "DURING GENERATION: ");
+    switch (type){
+        case UNEXPECTED_ERROR:
+            fprintf(stderr, "UNEXPECTED ERROR: %s\n", error_message);
+            break;
+        case WRONG_TYPE_ERROR:
+            fprintf(stderr, "WRONG TYPE ERROR: %s\n", error_message);
+            break;
+        case UNKOWN_SYMBOL_ERROR:
+            fprintf(stderr, "UNKOWN SYMBOL ERROR: %s\n", error_message);
+            break;
+        case NO_CONTEXT_ERROR:
+            fprintf(stderr, "NO CONTEXT ERROR: %s\n", error_message);
+            break;
+        case UNKOWN_TYPE_ERROR:
+            fprintf(stderr, "MISSING VARIABLE ERROR: %s\n", error_message);
+            break;
+        case FORBIDDEN_ERROR:
+            fprintf(stderr, "FORBIDDEN ERROR: %s\n", error_message);
+            break;
+        default:
+            fprintf(stderr, "ERROR: %s\n", error_message);
+    }
+    // locate position
+    if((error_node->type == IDENTIFIER) || (error_node->type == NAME) || (error_node->type == VALUE)){
+        fprintf(stderr, "line %i    ->%s<-\n\n", error_node->line, error_node->value);
+    } else {
+        fprintf(stderr, "line %i\n\n", error_node->line);
+    }
+}
 
 int find_variable(variable *var_list, size_t size, LLVMValueRef *llvm){
-    for(int i = 0; i < size; i++){
+    for(size_t i = 0; i < size; i++){
         if(var_list[i].llvm == llvm){
             return i;
         }
@@ -70,36 +131,120 @@ LLVMValueRef make_label(qir_context qir, int number){
 }
 
 void call_function(qir_context qir, ast *node, char *name){
-    LLVMValueRef *args = NULL;
+    LLVMTypeRef one_param[1] = { ptr_type };
+    LLVMTypeRef two_param[2] = { ptr_type , ptr_type };
 
-    if(strcmp(name, "H") == 0){
-        args = calloc(1, sizeof(LLVMValueRef));
-        args[0] = *(node->llvm);
-
-        LLVMBuildCall2(qir.builder, h_type, h_function, args, 1, "");
-
-        if(print) printf("HADAMARD CALL with %s:%p\n",node->name ,node->llvm);
-    } else if(strcmp(name, "CNOT") == 0){
-        args = calloc(2, sizeof(LLVMValueRef));
-        args[0] = *(node->llvm);
-        args[1] = *(node->branch->llvm);
-
-        LLVMBuildCall2(qir.builder, cnot_type, cnot_function, args, 2, "");
-
-        if(print) printf("CNOT CALL with %s:%p    %s:%p\n",node->name ,node->llvm, node->branch->name, node->branch->llvm);
+    if(node->llvm == NULL){
+        fprintf(stderr, "ERROR: llvm pointer is NULL in function call of %s in line %in", name, node->line);
     }
 
-    free(args);
+    if(strcmp(name, "H") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(h_type == 0){
+            h_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            h_function = LLVMAddFunction(qir.module, "__quantum__qis__h__body", h_type);
+        }
+        LLVMBuildCall2(qir.builder, h_type, h_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+        
+    } else if(strcmp(name, "X") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(x_type == 0){
+            x_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            x_function = LLVMAddFunction(qir.module, "__quantum__qis__x__body", x_type);
+        }
+        LLVMBuildCall2(qir.builder, x_type, x_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "Y") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(y_type == 0){
+            y_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            y_function = LLVMAddFunction(qir.module, "__quantum__qis__y__body", y_type);
+        }
+        LLVMBuildCall2(qir.builder, y_type, y_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "Z") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(z_type == 0){
+            z_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            z_function = LLVMAddFunction(qir.module, "__quantum__qis__z__body", z_type);
+        }
+        LLVMBuildCall2(qir.builder, z_type, z_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "RX") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(rx_type == 0){
+            rx_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            rx_function = LLVMAddFunction(qir.module, "__quantum__qis__rx__body", rx_type);
+        }
+        LLVMBuildCall2(qir.builder, rx_type, rx_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "RY") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(ry_type == 0){
+            ry_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            ry_function = LLVMAddFunction(qir.module, "__quantum__qis__ry__body", ry_type);
+        }
+        LLVMBuildCall2(qir.builder, ry_type, ry_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "RZ") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(rz_type == 0){
+            rz_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            rz_function = LLVMAddFunction(qir.module, "__quantum__qis__rz__body", rz_type);
+        }
+        LLVMBuildCall2(qir.builder, rz_type, rz_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "S") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(s_type == 0){
+            s_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            s_function = LLVMAddFunction(qir.module, "__quantum__qis__s__body", s_type);
+        }
+        LLVMBuildCall2(qir.builder, s_type, s_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if(strcmp(name, "T") == 0){
+        LLVMValueRef args[1] = { *(node->llvm) };
+
+        if(t_type == 0){
+            t_type = LLVMFunctionType(void_type, one_param, 1, 0);
+            t_function = LLVMAddFunction(qir.module, "__quantum__qis__t__body", t_type);
+        }
+        LLVMBuildCall2(qir.builder, t_type, t_function, args, 1, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+
+    } else if((strcmp(name, "CNOT") == 0) || (strcmp(name, "CX") == 0)){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(h_type == 0){
+            cx_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            cx_function = LLVMAddFunction(qir.module, "__quantum__qis__cx__body", cx_type);
+        }
+        LLVMBuildCall2(qir.builder, cx_type, cx_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    }
+
 }
 
-int add_value(qir_context qir, enum variable_type type, unsigned long long value, LLVMValueRef *llvm){
+int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *llvm){
     switch(type){
         case VAR_QUBIT:
             *llvm = LLVMConstIntToPtr(LLVMConstInt(i64_type, required_num_qubits, 0), ptr_type);
-
-            if(required_num_qubits == 0){
-                //LLVMBuildCall2(qir.builder, init_type, init_function, llvm, 1, "");
-            }
 
             required_num_qubits++;
             break;
@@ -122,19 +267,29 @@ int add_value(qir_context qir, enum variable_type type, unsigned long long value
 
 void generate_instructions(qir_context qir, ast *node){
     if(!node) return;
+    if(!adaptive && measured && (node->type != MEASURE)){
+        generator_error(node, FORBIDDEN_ERROR, "A BASE profile compliant program does not allow any operations after a measurement");
+        return;
+    }
 
+    int value;
     switch(node->type){
         case CALL:
             call_function(qir, node->left, node->name);
             break;
 
         case MEASURE:
+            measured = 1;
             required_num_results++;
             result_list = realloc(result_list, required_num_results*sizeof(LLVMValueRef));
 
             result_list[required_num_results-1] = *(node->llvm);
+            if(adaptive){
+                LLVMValueRef mz_args[2] = { *(node->llvm), *(node->llvm)};
+                LLVMBuildCall2(qir.builder, measure_type, measure_function, mz_args, 2, "");
+            }
 
-            if(print) printf("MEASUREMENT with %s:%p\n",node->name ,node->llvm);
+            if(print) printf("MEASUREMENT with %s:%p\n",node->name ,(void*)node->llvm);
             break;
 
         case TYPE:
@@ -142,28 +297,36 @@ void generate_instructions(qir_context qir, ast *node){
             if(node->branch->llvm == NULL) {
                 return;
             }
-            if(add_value(qir, node->var_type, 0, node->branch->llvm) == -1) return;
+            if(add_value(node->var_type, 0, node->branch->llvm) == -1) return;
 
-            if(print) printf("NEW VAR %s:%p\n",node->branch->name ,node->branch->llvm);
+            if(print) printf("NEW VAR %s:%p\n",node->branch->name ,(void*)node->branch->llvm);
             break;
 
         case ASSIGN:
-            if(add_value(qir, node->left->var_type, strtol(node->right->value, NULL, 10), node->left->branch->llvm) == -1) return;
+            value = strtol(node->right->value, NULL, 10);
+            if(add_value(node->left->var_type, value, node->left->branch->llvm) == -1) return;
+            if(node->left->var_type == VAR_QUBIT){
+                if(value == 1){
+                    call_function(qir, node->left->branch, "X");
+                }
+            }
 
-            if(print) printf("NEW VAR %s:%p\n",node->left->branch->name ,node->left->branch->llvm);
+            if(print) printf("NEW VAR %s:%p\n",node->left->branch->name ,(void*)node->left->branch->llvm);
             break;
         case FUNCTION:
             break;
         default:
+            break;
     }
     generate_instructions(qir, node->branch);
 }
 
 
 FILE *generate_QIR(ast *root){
-    // setup for var_array and qir_context
-    LLVMValueRef *var_array;
+    // setup for qir_context
     qir_context qir;
+    measured = 0;
+
     // general LLVM setup
     qir.context = LLVMContextCreate();
     qir.module = LLVMModuleCreateWithNameInContext("QUALLE_module", qir.context);
@@ -189,8 +352,8 @@ FILE *generate_QIR(ast *root){
     LLVMValueRef main_function = LLVMAddFunction(qir.module, "main", main_type);
     
     // measure function
-    LLVMTypeRef measure_type = LLVMFunctionType(void_type, two_param, 2, 0);
-    LLVMValueRef measure_function = LLVMAddFunction(qir.module, "__quantum__qis__mz__body", measure_type);
+    measure_type = LLVMFunctionType(void_type, two_param, 2, 0);
+    measure_function = LLVMAddFunction(qir.module, "__quantum__qis__mz__body", measure_type);
 
     // record output
     LLVMTypeRef result_type = LLVMFunctionType(void_type, two_param, 2, 0);
@@ -200,12 +363,6 @@ FILE *generate_QIR(ast *root){
     LLVMTypeRef init_type = LLVMFunctionType(void_type, one_param, 1, 0);
     LLVMValueRef init_function = LLVMAddFunction(qir.module, "__quantum__rt__initialize", init_type);
 
-    // other functions
-    h_type = LLVMFunctionType(void_type, one_param, 1, 0);
-    h_function = LLVMAddFunction(qir.module, "__quantum__qis__h__body", h_type);
-    cnot_type = LLVMFunctionType(void_type, two_param, 2, 0);
-    cnot_function = LLVMAddFunction(qir.module, "__quantum__qis__cnot__body", cnot_type);
-    
     
     // build block structure
     LLVMBasicBlockRef entry_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "entry");
@@ -226,16 +383,19 @@ FILE *generate_QIR(ast *root){
     if(print) printf("\nGENERATOR:\n");
     generate_instructions(qir, root);
 
-    LLVMBuildBr(qir.builder, measure_block);
+    if(adaptive == 0) LLVMBuildBr(qir.builder, measure_block);
 
     // measure block
-    LLVMPositionBuilderAtEnd(qir.builder, measure_block);
-
-    for(int i = 0; i < required_num_results; i++){
-        LLVMValueRef mz_args[2] = { result_list[i], result_list[i]};
-        LLVMBuildCall2(qir.builder, measure_type, measure_function, mz_args, 2, "");
+    // this block is only used in a base profile program
+    if(adaptive == 0){
+        LLVMPositionBuilderAtEnd(qir.builder, measure_block);
+    
+        for(int i = 0; i < required_num_results; i++){
+            LLVMValueRef mz_args[2] = { result_list[i], result_list[i]};
+            LLVMBuildCall2(qir.builder, measure_type, measure_function, mz_args, 2, "");
+        }
+    
     }
-
     LLVMBuildBr(qir.builder, output_block);
 
     // output block
@@ -285,8 +445,8 @@ FILE *generate_QIR(ast *root){
     // add module flags these are QIR specific
     LLVMMetadataRef meta_major = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MAJOR_VERSION, 0));
     LLVMMetadataRef meta_minor = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MINOR_VERSION, 0));
-    LLVMMetadataRef meta_dynamic_qu = LLVMValueAsMetadata(LLVMConstInt(i1_type, ADAPTIVE, 0));
-    LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, ADAPTIVE, 0));
+    LLVMMetadataRef meta_dynamic_qu = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, 0));
+    LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, 0));
 
     LLVMAddModuleFlag(qir.module, LLVMModuleFlagBehaviorError, "qir_major_version", 17, meta_major);
     LLVMAddModuleFlag(qir.module, 6, "qir_minor_version", 17, meta_minor);
