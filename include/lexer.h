@@ -24,6 +24,7 @@ typedef struct token {
     struct token* next_token;
 } token;
 
+// this gets called by main, main also allocates and frees buffer
 token* get_token(char* buffer);
 
 #endif

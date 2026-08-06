@@ -63,6 +63,14 @@ token* check_token(char chr, token* current_token){
         // \n and ; are recongised as line breaks and are also collapsed into one token if consecutive
         case '\n':
             current_line++;
+            if(current_token->type != END_OF_LINE){
+                current_token = create_token(current_token);
+                current_token->line = current_line;
+                current_token->type = END_OF_LINE;
+                current_token->value = malloc(sizeof(char));
+                *(current_token->value) = ';';
+            }
+            break;
         case ';':
             if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
