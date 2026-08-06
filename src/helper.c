@@ -20,12 +20,12 @@ void print_ast(ast *root, int level){
     if (root == NULL) return;
     // print current level
     if((level > 1) && (root->type != ROOT)) printprefix(level);
+    char *str = "unknown";
     switch(root->type){
         case ROOT:
             printf("├─> ROOT\n");
             break;
         case TYPE:
-            char *str = "default";
             switch(root->var_type){
                 case VAR_QUBIT:
                     str = "qubit";
@@ -49,6 +49,7 @@ void print_ast(ast *root, int level){
                     str = "natural";
                     break;
                 default:
+                    break;
             }
             printf("├── TYPE: '%s'\n", str);
             break;
@@ -173,8 +174,8 @@ void print_token_list(token* first_token){
 void print_var_list(variable *var_list, size_t size){
     printf("\n");
     printf("SIZE: %lu\n", size);
-    for(int i = 0; i < size; i++){
-        char *str = "default";
+    for(size_t i = 0; i < size; i++){
+        char *str = "unknown";
             switch(var_list[i].type){
                 case VAR_QUBIT:
                     str = "qubit";
@@ -198,8 +199,9 @@ void print_var_list(variable *var_list, size_t size){
                     str = "natural";
                     break;
                 default:
+                    break;
             }
-        printf("Var %i: %s '%s' = %s\n", i, str, var_list[i].name, var_list[i].value);
+        printf("Var %lu: %s '%s' = %s\n", i, str, var_list[i].name, var_list[i].value);
     }
 }
 
@@ -254,7 +256,7 @@ void free_ast(ast *root){
 }
 
 void free_var_list(variable *var_list, size_t size){
-    for(int i = 0; i < size; i++){
+    for(size_t i = 0; i < size; i++){
         free(var_list[i].name);
         free(var_list[i].value);
         free(var_list[i].llvm);
