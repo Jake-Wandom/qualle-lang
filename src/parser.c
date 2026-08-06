@@ -3,9 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+// global variables that track the current token and last linebreak
 static token *current_token;
 static ast *last_eol;
 
+// flags that mark, if we are in a certain program state
 static bool in_parameters;
 static bool in_function;
 static bool in_assign;
@@ -14,7 +16,7 @@ static bool in_assign;
 creates a new node with all pointer values set to NULL
 contrary to create_token, this function does not automatically append
 */
-ast* create_node(){
+ast* create_node(void){
     ast *new_node = calloc(1, sizeof(ast));
     new_node->type = ROOT;
     new_node->branch = NULL;
@@ -174,6 +176,10 @@ ast* parse_function(ast *current_node){
     return parse_start(new_node);
 }
 
+/*
+this function parses an include and makes sure, that it has a proper file name
+atm includes do not work at the lower levels but they get parsed for now
+*/
 ast* parse_include(ast *current_node){
     switch_token(1);
 
@@ -220,6 +226,9 @@ ast* parse_type(ast *current_node){
 
     if(current_token->type != INDICATOR){
         parse_error(current_token, UNEXPECTED_ERROR, "Expected variable type");
+        return NULL;
+    } else if(current_token->next_token->type != INDICATOR){
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected variable name after type");
         return NULL;
     }
 
@@ -272,6 +281,10 @@ ast* parse_type(ast *current_node){
     return parse_start(new_node);
 }
 
+/*
+this function parses the left and right side of an assign and rearranges the ast
+the right branch is parsed recursively and the left branch is extracted from last_eol
+*/
 ast *parse_assign(ast *current_node){
     if(last_eol == NULL){
         parse_error(current_token, MISSING_ERROR, "Assignment unable to be parsed");
@@ -279,8 +292,11 @@ ast *parse_assign(ast *current_node){
     } else if(in_assign){
         parse_error(current_token, FORBIDDEN_ERROR, "Cannot call assign in an assign");
         return NULL;
+    } else if(current_node == NULL){
+        return NULL;
     }
 
+    // we use last_eol as an anchor point to append our new node and use the old nodes as left branch
     ast *left = last_eol->branch;
     ast *temp_node = create_node();
 
@@ -321,7 +337,7 @@ ast *parse_assign(ast *current_node){
 }
 
 /*
-this parses operators these can be operations as well as assigns
+this parses operators, these can be operations as well as assigns
 */
 ast* parse_operator(ast *current_node){
     if(*(current_token->value) == '='){
@@ -331,6 +347,10 @@ ast* parse_operator(ast *current_node){
     return NULL;
 }
 
+/*
+measure is not parsed as a normal function
+since we can only measure one qubit we store the qubit name and LLVMValueRef in this node directly
+*/
 ast* parse_measure(ast *current_node){
     if(current_token->next_token->type != BRACKET_OPEN) return NULL;
     if(*(current_token->next_token->value) != '(') return NULL;
@@ -360,6 +380,10 @@ ast* parse_measure(ast *current_node){
     return parse_start(new_node);
 }
 
+/*
+function that parses a function call. for now this can not parse custom functions
+it parses parameters, which can only be identifiers and numbers
+*/
 ast* parse_call(ast *current_node){
     if(current_token->next_token->type != BRACKET_OPEN) return NULL;
     if(*(current_token->next_token->value) != '(') return NULL;
@@ -455,7 +479,7 @@ ast* parse_indicator(ast *current_node){
     }
     
     // check if its a measure
-    if(strcmp(current_token->value, "measure") == 0){
+    if((strcmp(current_token->value, "measure") == 0) || (strcmp(current_token->value, "MEASURE") == 0) | (strcmp(current_token->value, "MZ") == 0) || strcmp(current_token->value, "mz") == 0){
         return parse_measure(current_node);
     }
     
@@ -494,6 +518,10 @@ ast* parse_indicator(ast *current_node){
     return parse_start(current_node);
 }
 
+/*
+this parses a number
+since we use strings at this stage this is a very simple function
+*/
 ast* parse_number(ast *current_node){
     ast *new_node = create_node();
     new_node->type = VALUE;
@@ -522,7 +550,11 @@ ast* parse_number(ast *current_node){
 
 
 
-
+/*
+The start for our recursive decent parser
+parse_start branches out to the other recursive functions
+the END and BRACKET_CLOSE(under certain conditions) tokens are terminating
+*/
 ast* parse_start(ast *current_node){
     if(!current_token){
         return current_node;
@@ -573,10 +605,10 @@ ast* parse_start(ast *current_node){
                 if(*(current_token->value) == '}'){
                     return current_node;
                 }
-            } else {
-                parse_error(current_token, MISSING_ERROR, "Missing open bracket");
-                return NULL;
             }
+
+            parse_error(current_token, MISSING_ERROR, "Missing open bracket");
+            return NULL;
             
         case END:
             if(in_parameters){
@@ -598,6 +630,10 @@ ast* parse_start(ast *current_node){
     return current_node;
 }
 
+/*
+this is the access function for main
+it resets the global variables
+*/
 ast* generate_ast(token *first_token){
     // initialisations
     in_function = 0;
