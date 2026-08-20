@@ -109,8 +109,8 @@ int find_variable(variable *var_list, size_t size, LLVMValueRef *llvm){
 }
 
 LLVMValueRef make_label(qir_context qir, int number){
-    size_t temp_size = floor(log10(number))+2;
-    if(number <= 0) temp_size = 2;
+    size_t temp_size = 2;
+    if(number > 0) temp_size = floor(log10(number))+2;
         
     char *label_name = calloc(1, temp_size);
     snprintf(label_name, temp_size, "%i", number);
@@ -231,13 +231,67 @@ void call_function(qir_context qir, ast *node, char *name){
     } else if((strcmp(name, "CNOT") == 0) || (strcmp(name, "CX") == 0)){
         LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
 
-        if(h_type == 0){
+        if(cx_type == 0){
             cx_type = LLVMFunctionType(void_type, two_param, 2, 0);
             cx_function = LLVMAddFunction(qir.module, "__quantum__qis__cx__body", cx_type);
         }
         LLVMBuildCall2(qir.builder, cx_type, cx_function, args, 2, "");
         if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
-    }
+    } else if(strcmp(name, "CY") == 0){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(cy_type == 0){
+            cy_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            cy_function = LLVMAddFunction(qir.module, "__quantum__qis__cy__body", cy_type);
+        }
+        LLVMBuildCall2(qir.builder, cy_type, cy_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    } else if(strcmp(name, "CZ") == 0){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(cz_type == 0){
+            cz_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            cz_function = LLVMAddFunction(qir.module, "__quantum__qis__cz__body", cz_type);
+        }
+        LLVMBuildCall2(qir.builder, cz_type, cz_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    } else if(strcmp(name, "SWAP") == 0){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(swap_type == 0){
+            swap_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            swap_function = LLVMAddFunction(qir.module, "__quantum__qis__swap__body", swap_type);
+        }
+        LLVMBuildCall2(qir.builder, swap_type, swap_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    } else if(strcmp(name, "RXX") == 0){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(rxx_type == 0){
+            rxx_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            rxx_function = LLVMAddFunction(qir.module, "__quantum__qis__rxx__body", rxx_type);
+        }
+        LLVMBuildCall2(qir.builder, rxx_type, rxx_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    } else if(strcmp(name, "RYY") == 0){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(ryy_type == 0){
+            ryy_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            ryy_function = LLVMAddFunction(qir.module, "__quantum__qis__ryy__body", ryy_type);
+        }
+        LLVMBuildCall2(qir.builder, ryy_type, ryy_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    } else if(strcmp(name, "RZZ") == 0){
+        LLVMValueRef args[2] = { *(node->llvm), *(node->branch->llvm) };
+
+        if(rzz_type == 0){
+            rzz_type = LLVMFunctionType(void_type, two_param, 2, 0);
+            rzz_function = LLVMAddFunction(qir.module, "__quantum__qis__rzz__body", rzz_type);
+        }
+        LLVMBuildCall2(qir.builder, rzz_type, rzz_function, args, 2, "");
+        if(print) printf("%s CALL with %s:%p\n",name, node->name ,(void*)node->llvm);
+    } 
 
 }
 
@@ -344,6 +398,7 @@ FILE *generate_QIR(ast *root){
     // analyse the ast
     size_t size = count_nodes(root);
     variable *variable_list = analyse_ast(root);
+    if(print) print_ast(root, 1);
 
     
     // define basic functions
