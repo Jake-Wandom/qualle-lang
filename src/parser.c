@@ -233,10 +233,6 @@ ast* parse_type(ast *current_node){
         type = VAR_QUBIT;
     } else if(strcmp(current_token->value, "bit") == 0){
         type = VAR_BIT;
-    } else if(strcmp(current_token->value, "N") == 0){
-        type = VAR_NATURAL;
-    } else if(strcmp(current_token->value, "Z") == 0){
-        type = VAR_INTEGER;
     } else if(strcmp(current_token->value, "int") == 0){
         type = VAR_INTEGER;
     } else if(strcmp(current_token->value, "uint") == 0){

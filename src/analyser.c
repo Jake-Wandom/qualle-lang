@@ -183,7 +183,7 @@ int analyse_call(ast *node, variable *variable_list, size_t size){
     } else if(strcmp(node->name, "T") == 0){
         if(check_parameters(node->left, 1, variable_list, size) == -1) return -1;
         return 0;
-    } else if(strcmp(node->name, "CNOT") == 0){
+    } else if((strcmp(node->name, "CNOT") == 0) || (strcmp(node->name, "CX") == 0)){
         if(check_parameters(node->left, 2, variable_list, size) == -1) return -1;
         return 0;
     } else if(strcmp(node->name, "CY") == 0){

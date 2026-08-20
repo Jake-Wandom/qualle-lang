@@ -398,6 +398,7 @@ FILE *generate_QIR(ast *root){
     // analyse the ast
     size_t size = count_nodes(root);
     variable *variable_list = analyse_ast(root);
+    if(variable_list == NULL) goto dispose;
     if(print) print_ast(root, 1);
 
     
@@ -538,6 +539,7 @@ FILE *generate_QIR(ast *root){
         return NULL;
     }
 
+    dispose:
     LLVMDisposeBuilder(qir.builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);
