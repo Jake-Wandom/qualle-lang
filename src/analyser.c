@@ -125,6 +125,7 @@ variable analyse_type(ast *node, variable *variable_list, size_t size){
         return (variable){.type = -1, .name = NULL, .llvm = NULL, .value = NULL};
     }
     node->branch->llvm = new_var.llvm;
+    node->branch->resolved_type = node->var_type;
     
     return new_var;
 }
@@ -217,8 +218,7 @@ int analyse_left(ast *node, variable *variable_list, size_t size){
     } else if(node->type == TYPE){
         variable new_var = analyse_type(node, variable_list, size);
         if((int)new_var.type == -1) return -1;
-
-        node->branch->llvm = new_var.llvm;
+        
         int pos = lookup_var(node->branch->name, variable_list, size);
 
         if(pos < 0) return -1;
