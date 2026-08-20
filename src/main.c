@@ -15,14 +15,18 @@ int main(int argc, char **argv){
 
     // first we process all input args: flags and files
     // num_of_files and files contain all file pointers to file names from argv
+    int return_value = 0;
     int num_of_files = 0;
     FILE **files = NULL;
+    char *main_buffer = NULL;
+    char *line_buffer = NULL;
+
     for(int i = 1; i < argc; i++){
         // check if argv is a flag
         if(argv[i][0] == '-'){
             if(strcmp(argv[i],"--help") == 0){
                 print_man_page();
-                return 0;
+                goto end;
             } else if(strcmp(argv[i],"--optimise") == 0){
                 optimisation = 1;
             } else if(strcmp(argv[i],"--print") == 0){
@@ -51,7 +55,8 @@ int main(int argc, char **argv){
                         break;
                     default:
                         fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
-                        return 1;
+                        return_value = -1;
+                        goto end;
                 }
             }
         } else {
@@ -64,7 +69,8 @@ int main(int argc, char **argv){
             if(*(files+num_of_files-1) == NULL){
                 fprintf(stderr, "Could not locate or open file %s\n", argv[i]);
                 free(files);
-                return 1;
+                return_value = 2;
+                goto end;
             }
         }
     }
@@ -87,8 +93,8 @@ int main(int argc, char **argv){
 
 
     // now we process all files into token streams
-    char* main_buffer = calloc(buffer_size, sizeof(char));
-    char* line_buffer = calloc(line_buffer_size, sizeof(char));
+    main_buffer = calloc(buffer_size, sizeof(char));
+    line_buffer = calloc(line_buffer_size, sizeof(char));
     token* first_token;
 
     for(int i = 0; i < num_of_files; i++){
@@ -125,10 +131,16 @@ int main(int argc, char **argv){
 
     // close all files and free all pointers
     for(int i = 0; i < num_of_files; i++){
-        fclose(*(files+i));
+        if(files[i] == NULL){
+            return_value = 2;
+            break;
+        }
+        fclose(files[i]);
     }
+
+    end:
     free(files);
     free(main_buffer);
     free(line_buffer);
-    return 0;
+    return return_value;
 }
