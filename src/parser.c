@@ -227,9 +227,6 @@ ast* parse_type(ast *current_node){
     if(current_token->type != INDICATOR){
         parse_error(current_token, UNEXPECTED_ERROR, "Expected variable type");
         return NULL;
-    } else if(current_token->next_token->type != INDICATOR){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected variable name after type");
-        return NULL;
     }
 
     if(strcmp(current_token->value, "qubit") == 0){
@@ -251,6 +248,11 @@ ast* parse_type(ast *current_node){
     } else if(strcmp(current_token->value, "void") == 0){
         type = VAR_VOID;
     } else {
+        return NULL;
+    }
+
+    if(current_token->next_token->type != INDICATOR){
+        parse_error(current_token, UNEXPECTED_ERROR, "Expected variable name after type");
         return NULL;
     }
 
@@ -307,7 +309,7 @@ ast *parse_assign(ast *current_node){
     new_node->left = left;
 
     last_eol->branch = new_node;
-    last_eol = NULL;
+    last_eol = new_node;
     
     switch_token(1);
     
@@ -337,14 +339,25 @@ ast *parse_assign(ast *current_node){
 }
 
 /*
+this parses binary operations these are only supported in the adaptive profile
+*/
+ast* parse_binop(ast *current_node){
+    // TODO
+    return parse_start(current_node);
+}
+
+/*
 this parses operators, these can be operations as well as assigns
 */
 ast* parse_operator(ast *current_node){
-    if(*(current_token->value) == '='){
-        return parse_assign(current_node);
-    } 
-
-    return NULL;
+    switch(*(current_token->value)){
+        case '=':
+            return parse_assign(current_node);
+        case '+':
+            return parse_binop(current_node);
+        default:
+            return NULL;
+    }
 }
 
 /*
@@ -479,7 +492,7 @@ ast* parse_indicator(ast *current_node){
     }
     
     // check if its a measure
-    if((strcmp(current_token->value, "measure") == 0) || (strcmp(current_token->value, "MEASURE") == 0) | (strcmp(current_token->value, "MZ") == 0) || strcmp(current_token->value, "mz") == 0){
+    if((strcmp(current_token->value, "measure") == 0) || (strcmp(current_token->value, "MEASURE") == 0) || (strcmp(current_token->value, "MZ") == 0) || strcmp(current_token->value, "mz") == 0){
         return parse_measure(current_node);
     }
     
