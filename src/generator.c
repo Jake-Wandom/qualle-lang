@@ -331,25 +331,31 @@ void generate_instructions(qir_context qir, ast *node){
             break;
 
         case TYPE:
-            if(node->branch->type != NAME) return;
-            if(node->branch->llvm == NULL) {
+            diagnose d = {.line = node->line, .message = "The TYPE node type is currently not supported", .type = FATAL};
+            add_error_entry(d);
+            return;
+            break;
+
+        case NAME:
+            if(node->llvm == NULL) {
                 return;
             }
-            if(add_value(node->var_type, 0, node->branch->llvm) == -1) return;
+            if(add_value(node->resolved_type, 0, node->llvm) == -1) return;
 
-            if(print) printf("NEW VAR %s:%p\n",node->branch->name ,(void*)node->branch->llvm);
+            if(print) printf("NEW VAR %s:%p\n",node->name ,(void*)node->llvm);
             break;
 
         case ASSIGN:
+            // TODO
             value = strtol(node->right->value, NULL, 10);
-            if(add_value(node->left->var_type, value, node->left->branch->llvm) == -1) return;
+            if(add_value(node->left->resolved_type, value, node->left->llvm) == -1) return;
             if(node->left->var_type == VAR_QUBIT){
                 if(value == 1){
                     call_function(qir, node->left->branch, "X");
                 }
             }
 
-            if(print) printf("NEW VAR %s:%p\n",node->left->branch->name ,(void*)node->left->branch->llvm);
+            if(print) printf("NEW VAR %s:%p\n",node->left->name ,(void*)node->left->llvm);
             break;
         case FUNCTION:
             break;

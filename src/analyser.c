@@ -14,7 +14,7 @@ bool adaptive = 0;
 int count_nodes(ast *root){
     if(root == NULL) return 0;
     switch(root->type){
-        case TYPE:
+        case NAME:
             return count_nodes(root->branch)+1;
         case ASSIGN:
             return count_nodes(root->left)+count_nodes(root->right)+count_nodes(root->branch);
@@ -94,29 +94,26 @@ enum variable_type check_type(char *value){
     return VAR_VOID;
 }
 
-variable analyse_type(ast *node, variable *variable_list, size_t size){
-    if(node->type != TYPE){
-        diagnose d = {.line = node->line, .message = "Expected type", .type = ERROR};
+variable analyse_name(ast *node, variable *variable_list, size_t size){
+    if(node->type != NAME){
+        diagnose d = {.line = node->line, .message = "Expected variable definition", .type = ERROR};
         add_error_entry(d);
         return (variable){.type = -1, .name = NULL, .llvm = NULL, .value = NULL};
     }
-    if(node->branch->type != NAME){
-        diagnose d = {.line = node->line, .message = "Expected name after type", .type = ERROR};
-        add_error_entry(d);
-        return (variable){.type = -1, .name = NULL, .llvm = NULL, .value = NULL};
-    }
+
     // create a basic variable without a value and add it to the list
-    variable new_var = create_var(node->var_type, node->branch->name);
+    variable new_var = create_var(node->resolved_type, node->name);
     int pos = add_var(new_var, variable_list, size);
     if(pos == -1){
-        char message[64]; // unsafe, will fix later :)
+        char *message = malloc(64);
         sprintf(message, "Variable with the name '%s' exists already", new_var.name);
+        free(new_var.name);
+        free(new_var.llvm);
         diagnose d = {.line = node->line, .message = message, .type = ERROR};
         add_error_entry(d);
         return (variable){.type = -1, .name = NULL, .llvm = NULL, .value = NULL};
     }
-    node->branch->llvm = new_var.llvm;
-    node->branch->resolved_type = node->var_type;
+    node->llvm = new_var.llvm;
     
     return new_var;
 }
@@ -126,7 +123,7 @@ int check_parameters(ast *node, int num_param, variable *variable_list, size_t s
         if(node->type == IDENTIFIER){
             int pos = lookup_var(node->name, variable_list, size);
             if(pos < 0){
-                char message[64]; // unsafe, will fix later :)
+                char *message = malloc(64);
                 sprintf(message, "Variable with the name '%s' is unknown", node->name);
                 diagnose d = {.line = node->line, .message = message, .type = ERROR};
                 add_error_entry(d);
@@ -210,11 +207,11 @@ int analyse_left(ast *node, variable *variable_list, size_t size){
 
         return pos;
 
-    } else if(node->type == TYPE){
-        variable new_var = analyse_type(node, variable_list, size);
+    } else if(node->type == NAME){
+        variable new_var = analyse_name(node, variable_list, size);
         if((int)new_var.type == -1) return -1;
         
-        int pos = lookup_var(node->branch->name, variable_list, size);
+        int pos = lookup_var(node->name, variable_list, size);
 
         if(pos < 0) return -1;
         else return pos;
@@ -243,12 +240,19 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
     if(node == NULL) return 0;
     int res;
     int pos;
+    diagnose d;
     variable new_var;
 
     switch(node->type){
         case TYPE:
+            d = (diagnose){.line = node->line, .message = "The TYPE node type is currently not supported", .type = FATAL};
+            add_error_entry(d);
+            return -1;
+            break;
+
+        case NAME:
             // check if we can define a new variable
-            new_var = analyse_type(node, variable_list, size);
+            new_var = analyse_name(node, variable_list, size);
             if((int)new_var.type == -1) return -1;
             return walk_ast(node->branch->branch, variable_list, size);
             break;
@@ -278,9 +282,9 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
         case IDENTIFIER:
             pos = lookup_var(node->name, variable_list, size);
             if(pos < 0){
-                char message[64]; // unsafe, will fix later :)
+                char *message = malloc(64);
                 sprintf(message, "Variable with the name '%s' is unknown", node->name);
-                diagnose d = {.line = node->line, .message = message, .type = ERROR};
+                d = (diagnose){.line = node->line, .message = message, .type = ERROR};
                 add_error_entry(d);
                 return -1;
             }
@@ -308,9 +312,8 @@ variable* analyse_ast(ast *root){
         diagnose d = {.line = -1, .message = "ERROR during analysis", .type = ERROR};
         add_error_entry(d);
         free(variable_list);
-        check_errors();
-        return NULL;
     }
+    check_errors();
 
     if(print) print_var_list(variable_list, size);
     

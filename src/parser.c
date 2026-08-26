@@ -233,42 +233,35 @@ ast* parse_type(ast *current_node){
     } else {
         return NULL;
     }
-
-    
-    
-    ast *new_node = create_node();
-    new_node->type = TYPE;
-    new_node->var_type = type;
-    current_node->branch = new_node;
     
     switch_token(1);
     
     if(current_token->type != INDICATOR) {
+        ast *new_node = create_node();
+        new_node->type = TYPE;
+        new_node->var_type = type;
+        current_node->branch = new_node;
         return parse_start(new_node);
-    }
-
-    // now we check if the next token is an indicator
-    // if it is, we assume this is a variable declaration
-    if(current_token->type == INDICATOR){
+    } else {
+    // we assume this is a variable declaration
         ast *name_node = create_node();
         name_node->type = NAME;
+        name_node->resolved_type = type;
 
         size_t size = strlen(current_token->value)+1;
         name_node->name = calloc(1, size);
         if(!name_node->name){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
+            diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
+            add_error_entry(d);
+            return NULL;
+        }
         strncpy(name_node->name, current_token->value, size);
 
-        new_node->branch = name_node;
+        current_node->branch = name_node;
         switch_token(1);
 
         return parse_start(name_node);
     }
-
-    return parse_start(new_node);
 }
 
 /*
