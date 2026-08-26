@@ -1,5 +1,6 @@
 #include "generator.h"
 #include "helper.h"
+#include "error_qualle.h"
 #include "global_flags.h"
 
 #include <llvm-c/Core.h>
@@ -67,38 +68,6 @@ static LLVMValueRef ryy_function;
 static LLVMTypeRef rzz_type;
 static LLVMValueRef rzz_function;
 
-void generator_error(ast *error_node, enum error_type type, char *error_message){
-    fprintf(stderr, "DURING GENERATION: ");
-    switch (type){
-        case UNEXPECTED_ERROR:
-            fprintf(stderr, "UNEXPECTED ERROR: %s\n", error_message);
-            break;
-        case WRONG_TYPE_ERROR:
-            fprintf(stderr, "WRONG TYPE ERROR: %s\n", error_message);
-            break;
-        case UNKOWN_SYMBOL_ERROR:
-            fprintf(stderr, "UNKOWN SYMBOL ERROR: %s\n", error_message);
-            break;
-        case NO_CONTEXT_ERROR:
-            fprintf(stderr, "NO CONTEXT ERROR: %s\n", error_message);
-            break;
-        case UNKOWN_TYPE_ERROR:
-            fprintf(stderr, "MISSING VARIABLE ERROR: %s\n", error_message);
-            break;
-        case FORBIDDEN_ERROR:
-            fprintf(stderr, "FORBIDDEN ERROR: %s\n", error_message);
-            break;
-        default:
-            fprintf(stderr, "ERROR: %s\n", error_message);
-    }
-    // locate position
-    if((error_node->type == IDENTIFIER) || (error_node->type == NAME) || (error_node->type == VALUE)){
-        fprintf(stderr, "line %i    ->%s<-\n\n", error_node->line, error_node->value);
-    } else {
-        fprintf(stderr, "line %i\n\n", error_node->line);
-    }
-}
-
 int find_variable(variable *var_list, size_t size, LLVMValueRef *llvm){
     for(size_t i = 0; i < size; i++){
         if(var_list[i].llvm == llvm){
@@ -113,8 +82,19 @@ LLVMValueRef make_label(qir_context qir, int number){
     if(number > 0) temp_size = floor(log10(number))+2;
         
     char *label_name = calloc(1, temp_size);
+    if(!label_name){
+        diagnose d = {.line = -1, .message = "Failed to allocate memory for label name", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     snprintf(label_name, temp_size, "%i", number);
+
     char *label_identifier = calloc(1, 1+temp_size);
+    if(!label_identifier){
+        diagnose d = {.line = -1, .message = "Failed to allocate memory for label identifier", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     snprintf(label_identifier, 1+temp_size, "r%i", number);
 
     LLVMTypeRef array_type = LLVMArrayType2(LLVMInt8TypeInContext(qir.context), 1+temp_size);
@@ -135,7 +115,8 @@ void call_function(qir_context qir, ast *node, char *name){
     LLVMTypeRef two_param[2] = { ptr_type , ptr_type };
 
     if(node->llvm == NULL){
-        fprintf(stderr, "ERROR: llvm pointer is NULL in function call of %s in line %in", name, node->line);
+        diagnose d = {.line = node->line, .message = "llvm pointer is NULL in function call", .type = ERROR};
+        add_error_entry(d);
     }
 
     if(strcmp(name, "H") == 0){
@@ -296,6 +277,7 @@ void call_function(qir_context qir, ast *node, char *name){
 }
 
 int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *llvm){
+    diagnose d;
     switch(type){
         case VAR_QUBIT:
             *llvm = LLVMConstIntToPtr(LLVMConstInt(i64_type, required_num_qubits, 0), ptr_type);
@@ -312,7 +294,8 @@ int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *l
             break;
 
         default:
-            fprintf(stderr, "Error while generating\n");
+            d = (diagnose){.line = -1, .message = "This type is not supported", .type = ERROR};
+            add_error_entry(d);
             return -1;
     }
 
@@ -322,7 +305,8 @@ int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *l
 void generate_instructions(qir_context qir, ast *node){
     if(!node) return;
     if(!adaptive && measured && (node->type != MEASURE)){
-        generator_error(node, FORBIDDEN_ERROR, "A BASE profile compliant program does not allow any operations after a measurement");
+        diagnose d = {.line = node->line, .message = "A BASE profile compliant program does not allow any operations after a measurement", .type = ERROR};
+        add_error_entry(d);
         return;
     }
 
@@ -396,10 +380,15 @@ FILE *generate_QIR(ast *root){
 
 
     // analyse the ast
+    if(print) printf("ANALYSER PHASE:\n");
     size_t size = count_nodes(root);
     variable *variable_list = analyse_ast(root);
     if(variable_list == NULL) goto dispose;
     if(print) print_ast(root, 1);
+
+    if(print) printf("\n");
+
+    if(print) printf("GENERATOR PHASE:\n");
 
     
     // define basic functions
@@ -469,10 +458,12 @@ FILE *generate_QIR(ast *root){
 
     // convert the number of qubits and results to strings
     int len_qubits = floor(log10(required_num_qubits)) + 1; // this calculates the number of chars
+    if(required_num_qubits == 0) len_qubits = 1;
     char *str_qubits = malloc(len_qubits+1);
     snprintf(str_qubits, len_qubits+1, "%d", required_num_qubits);
 
-    int  len_results = floor(log10(required_num_results)) + 1; 
+    int len_results = floor(log10(required_num_results)) + 1;
+    if(required_num_results == 0) len_results = 1;
     char *str_results = malloc(len_results+1);
     snprintf(str_results, len_results+1, "%d", required_num_results);
 
@@ -521,13 +512,15 @@ FILE *generate_QIR(ast *root){
     // if bitcode is set, we generate a .bc file
     if(!ll){
         if(LLVMWriteBitcodeToFile(qir.module, "output.bc") != 0){
-            fprintf(stderr, "Error writing to .bc file\n");
+            diagnose d = {.line = -1, .message = "Error while writing .bc file", .type = ERROR};
+            add_error_entry(d);
             return NULL;
         }
         output = fopen("output.bc", "r+");
     } else { // if not, we generate a human readable .ll file
         if(LLVMPrintModuleToFile(qir.module, "output.ll", &error) != 0){
-            fprintf(stderr, "Error writing to .ll file: %s\n", error);
+            diagnose d = {.line = -1, .message = "Error while writing .ll file", .type = ERROR};
+            add_error_entry(d);
             LLVMDisposeMessage(error);
             return NULL;
         }
@@ -535,7 +528,8 @@ FILE *generate_QIR(ast *root){
     }
     
     if(!output){
-        fprintf(stderr, "Unable to open output file\n");
+        diagnose d = {.line = -1, .message = "Unable to open output file", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 

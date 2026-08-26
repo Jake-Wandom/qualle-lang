@@ -1,6 +1,7 @@
 #include "helper.h"
-#include "generator.h"
+#include "error_qualle.h"
 #include "global_flags.h"
+#include "generator.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,7 +56,7 @@ int main(int argc, char **argv){
                         break;
                     default:
                         fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
-                        return_value = -1;
+                        return_value = 1;
                         goto end;
                 }
             }
@@ -97,6 +98,8 @@ int main(int argc, char **argv){
     line_buffer = calloc(line_buffer_size, sizeof(char));
     token* first_token;
 
+    init_errors();
+
     for(int i = 0; i < num_of_files; i++){
         if(print) printf("FILE CONTENT %i. FILE:\n",i+1);
 
@@ -107,12 +110,16 @@ int main(int argc, char **argv){
 
         if(print) printf("\n");
 
+        if(print) printf("LEXER PHASE:\n");
         first_token = get_token(main_buffer);
         if(print) print_token_list(first_token);
         
-        ast *root = generate_ast(first_token);
+        if(print) printf("\n");
 
+        if(print) printf("PARSER PHASE:\n");
+        ast *root = generate_ast(first_token);
         if(print) print_ast(root, 1);
+
         if(print) printf("\n");
         
         // call to generator

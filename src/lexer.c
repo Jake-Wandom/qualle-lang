@@ -1,4 +1,6 @@
 #include "lexer.h"
+#include "error_qualle.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,19 +17,25 @@ if the list is not empty and there is not a token provided, the function will no
 instead it will return NULL
 */
 token* create_token(token* current_token){
+    diagnose d;
+    if(!current_token){
+        d = (diagnose){.line = -1, .message = "create_token() has not recieved a valid token", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
+
     token* new_token = malloc(sizeof(token));
+    if(!new_token){
+        d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     new_token->type = UNKOWN;
     new_token->line = -1;
     new_token->value = NULL;
     new_token->next_token = NULL;
-
-    if(current_token){
-        current_token->next_token = new_token;
-    } else {
-        fprintf(stderr, "create_token has not recieved a valid token\n");
-        free(new_token);
-        return NULL;
-    }
+    
+    current_token->next_token = new_token;
     return new_token;
 }
 /*
@@ -37,8 +45,10 @@ more details are provided in the comments for the unique cases
 the function returns either the old or a new token
 */
 token* check_token(char chr, token* current_token){
+    diagnose d;
     if(current_token == NULL){
-        fprintf(stderr, "check_token has not recieved a valid token\n");
+        d = (diagnose){.line = -1, .message = "check_token() has not recieved a valid token", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     } else if(comment_ignore == 1){
         if((chr != '\n') && (chr != ';')){
@@ -50,14 +60,7 @@ token* check_token(char chr, token* current_token){
     switch(chr) {
         // whitespaces 
         case ' ':
-        space = 1;
-            /*if(current_token->type != WHITESPACE){
-                current_token = create_token(current_token);
-                current_token->line = current_line;
-                current_token->type = WHITESPACE;
-                current_token->value = malloc(sizeof(char));
-                *(current_token->value) = ' ';
-            }*/
+            space = 1;
             break;
         
         // \n and ; are recongised as line breaks and are also collapsed into one token if consecutive
@@ -65,18 +68,38 @@ token* check_token(char chr, token* current_token){
             current_line++;
             if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
+                if(!current_token){
+                    d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 current_token->line = current_line;
                 current_token->type = END_OF_LINE;
                 current_token->value = malloc(sizeof(char));
+                if(!current_token->value){
+                    d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 *(current_token->value) = ';';
             }
             break;
         case ';':
             if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
+                if(!current_token){
+                    d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 current_token->line = current_line;
                 current_token->type = END_OF_LINE;
                 current_token->value = malloc(sizeof(char));
+                if(!current_token->value){
+                    d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 *(current_token->value) = ';';
             }
             break;
@@ -84,9 +107,19 @@ token* check_token(char chr, token* current_token){
         // normally check_token should not receive \0, this is just a backup
         case '\0':
             current_token = create_token(current_token);
+            if(!current_token){
+                d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                add_error_entry(d);
+                return NULL;
+            }
             current_token->line = current_line;
             current_token->type = END;
             current_token->value = malloc(sizeof(char));
+            if(!current_token->value){
+                d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             *(current_token->value) = '\0';
             break;
         
@@ -94,9 +127,19 @@ token* check_token(char chr, token* current_token){
         case ',':
         case '.':
             current_token = create_token(current_token);
+            if(!current_token){
+                d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                add_error_entry(d);
+                return NULL;
+            }
             current_token->line = current_line;
             current_token->type = DELIMITER;
             current_token->value = malloc(sizeof(char));
+            if(!current_token->value){
+                d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             *(current_token->value) = chr;
             break;
         
@@ -105,9 +148,19 @@ token* check_token(char chr, token* current_token){
         case '[':
         case '{':
             current_token = create_token(current_token);
+            if(!current_token){
+                d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                add_error_entry(d);
+                return NULL;
+            }
             current_token->line = current_line;
             current_token->type = BRACKET_OPEN;
             current_token->value = malloc(sizeof(char));
+            if(!current_token->value){
+                d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             *(current_token->value) = chr;
             break;
 
@@ -115,9 +168,19 @@ token* check_token(char chr, token* current_token){
         case ']':
         case '}':
             current_token = create_token(current_token);
+            if(!current_token){
+                d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                add_error_entry(d);
+                return NULL;
+            }
             current_token->line = current_line;
             current_token->type = BRACKET_CLOSE;
             current_token->value = malloc(sizeof(char));
+            if(!current_token->value){
+                d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             *(current_token->value) = chr;
             break;
         
@@ -125,9 +188,19 @@ token* check_token(char chr, token* current_token){
         case '#':
             comment_ignore = 1;
             current_token = create_token(current_token);
+            if(!current_token){
+                d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                add_error_entry(d);
+                return NULL;
+            }
             current_token->line = current_line;
             current_token->type = COMMENT;
             current_token->value = malloc(sizeof(char));
+            if(!current_token->value){
+                d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+                }
             *(current_token->value) = chr;
             break;
         
@@ -151,9 +224,19 @@ token* check_token(char chr, token* current_token){
         case '?':
         case ':':
             current_token = create_token(current_token);
+            if(!current_token){
+                d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                add_error_entry(d);
+                return NULL;
+            }
             current_token->line = current_line;
             current_token->type = OPERATOR;
             current_token->value = malloc(sizeof(char));
+            if(!current_token->value){
+                d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             *(current_token->value) = chr;
             break;
         
@@ -168,15 +251,30 @@ token* check_token(char chr, token* current_token){
                 size_t len = strlen(current_token->value);
                 if((len % 7) == 0){
                     current_token->value = realloc(current_token->value, len+(8*sizeof(char)));
+                    if(!current_token->value){
+                        d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                        add_error_entry(d);
+                        return NULL;
+                    }
                 }
                 *(current_token->value+len) = chr;
                 *(current_token->value+len+1) = '\0';
             } else {
                 space = 0;
                 current_token = create_token(current_token);
+                if(!current_token){
+                    d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 current_token->line = current_line;
                 current_token->type = INDICATOR;
                 current_token->value = calloc(8, sizeof(char));
+                if(!current_token->value){
+                    d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 *(current_token->value) = chr;
                 *(current_token->value+1) = '\0';
             }
@@ -189,15 +287,30 @@ token* check_token(char chr, token* current_token){
                 size_t len = strlen(current_token->value);
                 if((len % 8) == 0){
                     current_token->value = realloc(current_token->value, len+(9*sizeof(char)));
+                    if(!current_token->value){
+                        d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                        add_error_entry(d);
+                        return NULL;
+                    }
                 }
                 *(current_token->value+len) = chr;
                 *(current_token->value+len+1) = '\0';
             } else {
                 space = 0;
                 current_token = create_token(current_token);
+                if(!current_token){
+                    d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 current_token->line = current_line;
                 current_token->type = NUMBER;
                 current_token->value = calloc(9, sizeof(char));
+                if(!current_token->value){
+                    d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 *(current_token->value) = chr;
                 *(current_token->value+1) = '\0';
             }
@@ -207,13 +320,27 @@ token* check_token(char chr, token* current_token){
         default:
             if(chr){
                 current_token = create_token(current_token);
+                if(!current_token){
+                    d = (diagnose){.line = -1, .message = "create_token() returned NULL", .type = ERROR};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 current_token->line = current_line;
                 current_token->type = UNKOWN;
                 current_token->value = malloc(sizeof(char));
+                if(!current_token->value){
+                    d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
+                    add_error_entry(d);
+                    return NULL;
+                }
                 *(current_token->value) = chr;
-                fprintf(stderr, "unable to recognize character %c,%i\n", chr, chr);
+                char message[40];
+                sprintf(message, "unable to recognize character %c,%i\n", chr, chr);
+                d = (diagnose){.line = -1, .message = message, .type = WARNING};
+                add_error_entry(d);
             } else {
-                fprintf(stderr, "recieved unkown character, unable to read\n");
+                d = (diagnose){.line = -1, .message = "Received unkown character, unable to read", .type = FATAL};
+                add_error_entry(d);
             }
     }
     return current_token;
@@ -234,6 +361,12 @@ token* get_token(char* buffer){
     //we only have a pointer to the first token and its previous token is always NULL
     token *first_token = NULL;
     first_token = malloc(sizeof(token));
+    diagnose d;
+    if(!first_token){
+        d = (diagnose){.line = -1, .message = "Failed to allocate memory for new token", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     first_token->type = START;
     first_token->next_token = NULL;
     first_token->value = NULL;
@@ -241,7 +374,8 @@ token* get_token(char* buffer){
     
     // checking if the string contains \0 to mark the end. We don't have a length so we do not know, if this is the intended end of string.
     if(!strchr(buffer, '\0')){
-        fprintf(stderr, "No String end found\n");
+        d = (diagnose){.line = -1, .message = "Buffer is not \0 terminated", .type = FATAL};
+        add_error_entry(d);
         return NULL;
     }
 
@@ -257,7 +391,10 @@ token* get_token(char* buffer){
     current_token->type = END;
     
     if(first_token == NULL){
-        fprintf(stderr, "Token list empty\n");
+        d = (diagnose){.line = -1, .message = "Empty token list", .type = ERROR};
+        add_error_entry(d);
     }
+
+    check_errors();
     return first_token;
 }

@@ -1,4 +1,6 @@
 #include "parser.h"
+#include "error_qualle.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +20,11 @@ contrary to create_token, this function does not automatically append
 */
 ast* create_node(void){
     ast *new_node = calloc(1, sizeof(ast));
+    if(!new_node){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for new node", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     new_node->type = ROOT;
     new_node->branch = NULL;
     new_node->left = NULL;
@@ -37,53 +44,13 @@ If the token is END, we return it
 void switch_token(int num){
     for(int i = 0; i < num; i++){
         if(!current_token){
-            fprintf(stderr, "Null pointer while token switch\n");
-            exit(1);
+            diagnose d = {.line = -1, .message = "NULL pointer while token switch", .type = FATAL};
+            add_error_entry(d);
         }
         if(current_token->type == END){
             return;
         }
         current_token = current_token->next_token;
-    }
-}
-
-/*
-Error function for the parser
-Needs the token where the error occured and a type and custom message
-*/
-void parse_error(token *error_token, enum error_type type, char *error_message){
-
-    fprintf(stderr, "DURING PARSING: ");
-    switch (type){
-        case UNEXPECTED_ERROR:
-            fprintf(stderr, "UNEXPECTED ERROR: %s\n", error_message);
-            break;
-        case WRONG_TYPE_ERROR:
-            fprintf(stderr, "WRONG TYPE ERROR: %s\n", error_message);
-            break;
-        case UNKOWN_SYMBOL_ERROR:
-            fprintf(stderr, "UNKOWN SYMBOL ERROR: %s\n", error_message);
-            break;
-        case NO_CONTEXT_ERROR:
-            fprintf(stderr, "NO CONTEXT ERROR: %s\n", error_message);
-            break;
-        case UNKOWN_TYPE_ERROR:
-            fprintf(stderr, "MISSING VARIABLE ERROR: %s\n", error_message);
-            break;
-        case FORBIDDEN_ERROR:
-            fprintf(stderr, "FORBIDDEN ERROR: %s\n", error_message);
-            break;
-        default:
-            fprintf(stderr, "ERROR: %s\n", error_message);
-    }
-    // locate position
-    fprintf(stderr, "line %i ", error_token->line);
-    if((error_token->type == INDICATOR) || (error_token->type == NUMBER)){
-        fprintf(stderr, "line %i    ->%s<-\n\n", error_token->line, error_token->value);
-    } else if((error_token->type != START) && (error_token->type != END)){
-        fprintf(stderr, "line %i    ->%c<-\n\n", error_token->line, *(error_token->value));
-    } else {
-        fprintf(stderr, "line %i\n\n", error_token->line);
     }
 }
 
@@ -99,20 +66,27 @@ ast* parse_function(ast *current_node){
     switch_token(1);
 
     if(current_token->type != INDICATOR){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected function name");
+        diagnose d = {.line = current_token->line, .message = "Expected function name", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
     // store function name any double definitions are handled later
     size_t size = strlen(current_token->value)+1;
-    new_node->name = malloc(size);
+    new_node->name = calloc(1, size);
+    if(!new_node->name){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     strncpy(new_node->name, current_token->value, size);
 
 
     switch_token(1);
 
     if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '(')){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected '(' in function definition");
+        diagnose d = {.line = current_token->line, .message = "Expected '(' in function definition", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
@@ -136,14 +110,16 @@ ast* parse_function(ast *current_node){
     }   
 
     if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != ')')){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected ')' in function definition");
+        diagnose d = {.line = current_token->line, .message = "Expected ')' in function definition", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
     switch_token(1);
 
     if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected '{' in function definition");
+        diagnose d = {.line = current_token->line, .message = "Expected '{' in function definition", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
@@ -168,7 +144,8 @@ ast* parse_function(ast *current_node){
     }   
 
     if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected '}' after function");
+        diagnose d = {.line = current_token->line, .message = "Expected '}' in function definition", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
@@ -184,7 +161,9 @@ ast* parse_include(ast *current_node){
     switch_token(1);
 
     if(current_token->type != INDICATOR){
-        parse_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
+        diagnose d = {.line = current_token->line, .message = "include doesn't link to a file", .type = ERROR};
+        add_error_entry(d);
+        return NULL;
     }
     ast *new_node = create_node();
     new_node->type = INCLUDE;
@@ -192,27 +171,34 @@ ast* parse_include(ast *current_node){
     
     size_t size = strlen(current_token->value)+1;
     new_node->value = calloc(1, size);
+    if(!new_node->value){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     strncpy(new_node->value, current_token->value, size);
     
     switch_token(1);
 
     if(current_token->type != DELIMITER){
-        parse_error(current_token, UNEXPECTED_ERROR, "include needs to link to a file");
-        return NULL;
+        diagnose d = {.line = current_token->line, .message = "include doesn't link to a file", .type = ERROR};
+        add_error_entry(d);
+         return NULL;
     }
     
     switch_token(1);
 
     if((current_token->type != INDICATOR) || (strcmp(current_token->value, "ql") != 0)){
-        parse_error(current_token, UNEXPECTED_ERROR, "include needs to link to a .ql file");
+        diagnose d = {.line = current_token->line, .message = "include doesn't link to a .ql file", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
     switch_token(1);
 
     if(current_token->type != END_OF_LINE){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected ';' or linebreak at the end of include");
-        return NULL;
+        diagnose d = {.line = current_token->line, .message = "No linebreak after include", .type = WARNING};
+        add_error_entry(d);
     }
     return parse_start(new_node);
 }
@@ -225,7 +211,8 @@ ast* parse_type(ast *current_node){
     enum variable_type type;
 
     if(current_token->type != INDICATOR){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected variable type");
+        diagnose d = {.line = current_token->line, .message = "Variable type has to be an identifier", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
@@ -247,18 +234,18 @@ ast* parse_type(ast *current_node){
         return NULL;
     }
 
-    if(current_token->next_token->type != INDICATOR){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected variable name after type");
-        return NULL;
-    }
-
+    
     
     ast *new_node = create_node();
     new_node->type = TYPE;
     new_node->var_type = type;
     current_node->branch = new_node;
-
+    
     switch_token(1);
+    
+    if(current_token->type != INDICATOR) {
+        return parse_start(new_node);
+    }
 
     // now we check if the next token is an indicator
     // if it is, we assume this is a variable declaration
@@ -268,6 +255,11 @@ ast* parse_type(ast *current_node){
 
         size_t size = strlen(current_token->value)+1;
         name_node->name = calloc(1, size);
+        if(!name_node->name){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
         strncpy(name_node->name, current_token->value, size);
 
         new_node->branch = name_node;
@@ -285,10 +277,12 @@ the right branch is parsed recursively and the left branch is extracted from las
 */
 ast *parse_assign(ast *current_node){
     if(last_eol == NULL){
-        parse_error(current_token, MISSING_ERROR, "Assignment unable to be parsed");
+        diagnose d = {.line = current_token->line, .message = "Cannot parse assign", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     } else if(in_assign){
-        parse_error(current_token, FORBIDDEN_ERROR, "Cannot call assign in an assign");
+        diagnose d = {.line = current_token->line, .message = "Cannot call assign in another assign", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     } else if(current_node == NULL){
         return NULL;
@@ -301,6 +295,11 @@ ast *parse_assign(ast *current_node){
     ast *new_node = create_node();
     new_node->type = ASSIGN;
     new_node->value = malloc(1);
+    if(!new_node->value){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     *(new_node->value) = *(current_token->value);
     new_node->left = left;
 
@@ -327,7 +326,8 @@ ast *parse_assign(ast *current_node){
     }   
 
     if(current_token->type != END_OF_LINE){
-        parse_error(current_token, UNEXPECTED_ERROR, "Expected ';' after assignment");
+        diagnose d = {.line = current_token->line, .message = "Expected linebreak after assignment", .type = WARNING};
+        add_error_entry(d);
         return NULL;
     }  
 
@@ -361,8 +361,15 @@ measure is not parsed as a normal function
 since we can only measure one qubit we store the qubit name and LLVMValueRef in this node directly
 */
 ast* parse_measure(ast *current_node){
-    if(current_token->next_token->type != BRACKET_OPEN) return NULL;
-    if(*(current_token->next_token->value) != '(') return NULL;
+    if(current_token->next_token->type != BRACKET_OPEN){
+        diagnose d = {.line = current_token->line, .message = "Expected open bracket in measure call'", .type = ERROR};
+        add_error_entry(d);
+        return NULL;
+    }
+    if(*(current_token->next_token->value) != '('){
+        diagnose d = {.line = current_token->line, .message = "Expected '(' bracket", .type = WARNING};
+        add_error_entry(d);
+    }
 
     ast *new_node = create_node();
     new_node->type = MEASURE;
@@ -371,18 +378,31 @@ ast* parse_measure(ast *current_node){
     switch_token(2);
 
     if(current_token->type != INDICATOR){
-        parse_error(current_token, 0, "Expected qubit to measure");
+        diagnose d = {.line = current_token->line, .message = "Expected qubit name to measure", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
 
     size_t size = strlen(current_token->value)+1;
     new_node->value = calloc(1, size);
+    if(!new_node->value){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     strncpy(new_node->value, current_token->value, size);
 
     switch_token(1);
 
-    if(current_token->type != BRACKET_CLOSE) return NULL;
-    if(*(current_token->value) != ')') return NULL;
+    if(current_token->type != BRACKET_CLOSE){
+        diagnose d = {.line = current_token->line, .message = "Expected closed bracket in measure call", .type = ERROR};
+        add_error_entry(d);
+        return NULL;
+    }
+    if(*(current_token->value) != ')'){
+        diagnose d = {.line = current_token->line, .message = "Expected ')' bracket", .type = WARNING};
+        add_error_entry(d);
+    }
 
     switch_token(1);
 
@@ -395,13 +415,21 @@ it parses parameters, which can only be identifiers and numbers
 */
 ast* parse_call(ast *current_node){
     if(current_token->next_token->type != BRACKET_OPEN) return NULL;
-    if(*(current_token->next_token->value) != '(') return NULL;
+    if(*(current_token->next_token->value) != '('){
+        diagnose d = {.line = current_token->line, .message = "Expected '(' bracket", .type = WARNING};
+        add_error_entry(d);
+    }
 
     ast *new_node = create_node();
     new_node->type = CALL;
 
     size_t size = strlen(current_token->value)+1;
     new_node->name = calloc(1, size);
+    if(!new_node->name){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     strncpy(new_node->name, current_token->value, size);
 
     current_node->branch = new_node;
@@ -411,7 +439,10 @@ ast* parse_call(ast *current_node){
     new_node->left = temp_node;
     while(current_token != NULL){
         if(current_token->type == BRACKET_CLOSE){
-            if(*(current_token->value) != ')') return NULL;
+            if(*(current_token->value) != ')'){
+                diagnose d = {.line = current_token->line, .message = "Expected ')' bracket", .type = WARNING};
+                add_error_entry(d);
+            }
             switch_token(1);
             break;
 
@@ -422,6 +453,11 @@ ast* parse_call(ast *current_node){
 
             size_t number_size = strlen(current_token->value)+1;
             number_node->value = calloc(1, number_size);
+            if(!new_node->value){
+                diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             strncpy(number_node->value, current_token->value, number_size);
 
             switch_token(1);
@@ -431,6 +467,11 @@ ast* parse_call(ast *current_node){
                 switch_token(1);
                 if(current_token->type == NUMBER){
                     number_node->value = realloc(number_node->value, size+strlen(current_token->value));
+                    if(!number_node->value){
+                        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+                        add_error_entry(d);
+                        return NULL;
+                    }
                     strcat(number_node->value, current_token->value);
                     switch_token(1);
                 }
@@ -444,6 +485,11 @@ ast* parse_call(ast *current_node){
 
             size_t name_size = strlen(current_token->value)+1;
             iden_node->name = calloc(1, name_size);
+            if(!iden_node->name){
+                diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             strncpy(iden_node->name, current_token->value, name_size);
 
             temp_node->branch = iden_node;
@@ -454,10 +500,12 @@ ast* parse_call(ast *current_node){
         } else if(current_token->type == DELIMITER){
             switch_token(1);
         } else if(current_token->type == END_OF_LINE){
-            parse_error(current_token, MISSING_ERROR, "Missing ')' in function call");
+            diagnose d = {.line = current_token->line, .message = "Missing ')' bracket", .type = ERROR};
+            add_error_entry(d);
             return NULL;
         } else {
-            parse_error(current_token, UNEXPECTED_ERROR, "Expected Number or Identifier in function call");
+            diagnose d = {.line = current_token->line, .message = "Only variable names or numbers allowed in function call", .type = ERROR};
+            add_error_entry(d);
             return NULL;
         }
 
@@ -519,6 +567,11 @@ ast* parse_indicator(ast *current_node){
 
     size_t size = strlen(current_token->value)+1;
     new_node->name = calloc(1, size);
+    if(!new_node->name){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
     strncpy(new_node->name, current_token->value, size);
 
     current_node->branch = new_node;
@@ -538,6 +591,11 @@ ast* parse_number(ast *current_node){
 
     size_t size = strlen(current_token->value)+1;
     new_node->value = calloc(1, size);
+    if(!new_node->value){
+        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+        add_error_entry(d);
+        return NULL;
+    }
 
     strncpy(new_node->value, current_token->value, size);
 
@@ -548,6 +606,11 @@ ast* parse_number(ast *current_node){
         switch_token(1);
         if(current_token->type == NUMBER){
             new_node->value = realloc(new_node->value, size+strlen(current_token->value));
+            if(!new_node->value){
+                diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+                add_error_entry(d);
+                return NULL;
+            }
             strcat(new_node->value, current_token->value);
             switch_token(1);
         }
@@ -571,6 +634,7 @@ ast* parse_start(ast *current_node){
         return NULL;
     }
 
+    diagnose d;
     switch(current_token->type){
         case INDICATOR:
             return parse_indicator(current_node);
@@ -583,7 +647,8 @@ ast* parse_start(ast *current_node){
             if(in_assign){
                 return current_node;
             } else if(in_parameters){
-                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in function parameters");
+                d = (diagnose){.line = current_token->line, .message = "Unrecognised symbol as a function parameter", .type = ERROR};
+                add_error_entry(d);
                 return NULL;
             }
             switch_token(1);
@@ -591,7 +656,8 @@ ast* parse_start(ast *current_node){
         
         case OPERATOR:
             if(in_parameters){
-                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in function parameters");
+                d = (diagnose){.line = current_token->line, .message = "Unrecognised symbol as a function parameter", .type = ERROR};
+                add_error_entry(d);
                 return NULL;
             }
             return parse_operator(current_node);
@@ -599,7 +665,8 @@ ast* parse_start(ast *current_node){
         case START:
         case COMMENT:
             if(in_parameters){
-                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in function parameters");
+                d = (diagnose){.line = current_token->line, .message = "Unrecognised symbol as a function parameter", .type = ERROR};
+                add_error_entry(d);
                 return NULL;
             }
             switch_token(1);
@@ -616,25 +683,28 @@ ast* parse_start(ast *current_node){
                 }
             }
 
-            parse_error(current_token, MISSING_ERROR, "Missing open bracket");
+            d = (diagnose){.line = current_token->line, .message = "Missing open bracket", .type = WARNING};
+            add_error_entry(d);
             return NULL;
             
         case END:
             if(in_parameters){
-                parse_error(current_token, MISSING_ERROR, "Missing ')' in function parameters");
+                d = (diagnose){.line = current_token->line, .message = "Missing ')' in function parameters", .type = ERROR};
+                add_error_entry(d);
                 return NULL;
             } else if(in_function){
-                parse_error(current_token, MISSING_ERROR, "Missing '}' in function body");
+                d = (diagnose){.line = current_token->line, .message = "Missing '}' in function body", .type = ERROR};
+                add_error_entry(d);
                 return NULL;
             }
             return current_node;
 
-        default:
+            default:
+            d = (diagnose){.line = current_token->line, .message = "Not recognised in this context", .type = ERROR};
+            add_error_entry(d);
             if(in_parameters || in_function || in_assign){
-                parse_error(current_token, UNEXPECTED_ERROR, "Unrecognised symbol in this context");
                 return NULL;
             }
-            parse_error(current_token, 0, "Not recognised in this context");
         }
     return current_node;
 }
@@ -654,8 +724,10 @@ ast* generate_ast(token *first_token){
     last_eol = root;
 
     if(parse_start(root) == NULL){
-        fprintf(stderr, "handle_input returned NULL\n");
+        diagnose d = {.line = current_token->line, .message = "parse_start() returned NULL", .type = ERROR};
+        add_error_entry(d);
         return NULL;
     }
+    check_errors();
     return root;
 }
