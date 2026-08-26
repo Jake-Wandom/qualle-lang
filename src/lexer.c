@@ -334,7 +334,7 @@ token* check_token(char chr, token* current_token){
                     return NULL;
                 }
                 *(current_token->value) = chr;
-                char message[40];
+                char *message = malloc(64);
                 sprintf(message, "unable to recognize character %c,%i\n", chr, chr);
                 d = (diagnose){.line = -1, .message = message, .type = WARNING};
                 add_error_entry(d);
