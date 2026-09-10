@@ -2,6 +2,7 @@
 #define H_ERROR_QUALLE
 
 typedef enum {
+    INTERNAL,
     WARNING,
     ERROR,
     FATAL

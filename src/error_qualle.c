@@ -17,6 +17,11 @@ void print_errors(){
     for(int i = 0; i < errors.size; i++){
         fprintf(stderr, "%i. ", i+1);
         switch (errors.entries[i].type){
+        case INTERNAL:
+            if(errors.entries[i].line < 1) fprintf(stderr, "INTERNAL ERROR: %s\n", errors.entries[i].message);
+            else fprintf(stderr, "INTERNAL ERROR in line %i: %s\n", errors.entries[i].line, errors.entries[i].message);
+            break;
+
         case WARNING:
             if(errors.entries[i].line < 1) fprintf(stderr, "WARNING: %s\n", errors.entries[i].message);
             else fprintf(stderr, "WARNING in line %i: %s\n", errors.entries[i].line, errors.entries[i].message);
@@ -68,6 +73,7 @@ void add_error_entry(diagnose d){
             errors.entries[errors.size] = d;
             errors.size += 1;
             break;
+        case INTERNAL:
         case ERROR:
             errors.error_count += 1;
             errors.entries[errors.size] = d;
