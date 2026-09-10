@@ -38,8 +38,12 @@ enum ast_type {
     IDENTIFIER,
     VALUE,
     ASSIGN,
+    BINOP,
+    BOOLOP,
     FUNCTION,
     CALL,
+    CONDITIONAL,
+    LOOP,
     MEASURE,
     INCLUDE,
     RETURN
@@ -62,7 +66,6 @@ typedef struct abstract_syntax_tree {
 
     // union that contains possible variables for different node types
     union {
-        enum variable_type var_type;
         char *name;
         char *value;
     };

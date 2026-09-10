@@ -26,7 +26,7 @@ void print_ast(ast *root, int level){
             printf("├─> ROOT\n");
             break;
         case TYPE:
-            switch(root->var_type){
+            switch(root->resolved_type){
                 case VAR_QUBIT:
                     str = "qubit";
                     break;
@@ -68,6 +68,18 @@ void print_ast(ast *root, int level){
         case ASSIGN:
             printf("├── ASSIGN: '%c'\n", *(root->value));
             break;
+        case BINOP:
+            printf("├── BINOP: '%c'\n", *(root->value));
+            break;
+        case BOOLOP:
+            printf("├── BOOLOP: '%c'\n", *(root->value));
+            break;
+        case CONDITIONAL:
+            printf("├── IF: \n");
+            break;
+        case LOOP:
+            printf("├── LOOP: \n");
+            break;
         case INCLUDE:
             printf("├── INCLUDE: '%s'\n", root->value);
             break;
@@ -88,6 +100,8 @@ void print_ast(ast *root, int level){
     
     // recurse sub-tree
     switch(root->type){
+        case BOOLOP:
+        case BINOP:
         case ASSIGN:
             printprefix(level+1);
             printf("├─> Left:\n");
@@ -96,9 +110,18 @@ void print_ast(ast *root, int level){
             printf("├─> Right:\n");
             print_ast(root->right, level+1);
             break;
+        case LOOP:
         case FUNCTION:
             printprefix(level+1);
             printf("├─> Parameters:\n");
+            print_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Body:\n");
+            print_ast(root->right, level+1);
+            break;
+        case CONDITIONAL:
+            printprefix(level+1);
+            printf("├─> Boolean logic:\n");
             print_ast(root->left, level+1);
             printprefix(level+1);
             printf("├─> Body:\n");
@@ -237,6 +260,7 @@ void free_ast(ast *root){
         case VALUE:
             free(root->value);
             break;
+        case BINOP:
         case ASSIGN:
             free(root->value);
             free_ast(root->left);
