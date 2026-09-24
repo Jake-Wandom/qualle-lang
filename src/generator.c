@@ -16,13 +16,16 @@
 #define QIR_MINOR_VERSION 0
 
 bool ll = 0;
+bool dynamic_qubits = 0;
+bool dynamic_results = 0;
 
 // to avoid redefinitions we store these globally
 static LLVMTypeRef ptr_type;
 static LLVMTypeRef void_type;
 static LLVMTypeRef i32_type;
-static LLVMTypeRef i64_type;
+LLVMTypeRef i64_type;
 static LLVMTypeRef i1_type;
+LLVMTypeRef float_type;
 
 // the number of qubits that are declared and returned is counted dynamically
 static int required_num_qubits = 0;
@@ -276,30 +279,84 @@ void call_function(qir_context qir, ast *node, char *name){
 
 }
 
-int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *llvm){
+int llvm_value(qir_context qir, ast *node, unsigned long long value){
+    LLVMValueRef alloc;
+    LLVMValueRef loaded;
     diagnose d;
-    switch(type){
+    switch(node->resolved_type){
         case VAR_QUBIT:
-            *llvm = LLVMConstIntToPtr(LLVMConstInt(i64_type, required_num_qubits, 0), ptr_type);
-
+            *(node->llvm) = LLVMConstIntToPtr(LLVMConstInt(i64_type, required_num_qubits, 0), ptr_type);
+            
+            // if we init a qubit with value 1 we just use the X gate
+            if(value == 1){
+                call_function(qir, node, "X");
+            } else if(value != 0){
+                d = (diagnose){.line = node->line, .message = "Tried to initialise a qubit with a value other than 0 or 1", .type = ERROR};
+                add_error_entry(d);
+                return -1;
+            }
             required_num_qubits++;
             break;
 
         case VAR_BIT:
-            *llvm = LLVMConstInt(i1_type, value, 0);
+            alloc = LLVMBuildAlloca(qir.builder, i1_type, "");
+            loaded = LLVMBuildLoad2(qir.builder, i1_type, alloc, "load");
+            LLVMBuildStore(qir.builder, LLVMConstInt(i1_type, value, 0), alloc);
+            *(node->llvm) = alloc;
             break;
 
         case VAR_INTEGER:
-            *llvm = LLVMConstInt(i32_type, value, 0);
+            alloc = LLVMBuildAlloca(qir.builder, i32_type, "");
+            loaded = LLVMBuildLoad2(qir.builder, i32_type, alloc, "load");
+            LLVMBuildStore(qir.builder, LLVMConstInt(i32_type, value, 0), alloc);
+            *(node->llvm) = alloc;
             break;
 
         default:
-            d = (diagnose){.line = -1, .message = "This type is not supported", .type = ERROR};
+            d = (diagnose){.line = node->line, .message = "This type is not supported", .type = ERROR};
             add_error_entry(d);
             return -1;
     }
 
     return 0;
+}
+
+LLVMValueRef generate_operations(qir_context qir, ast *node){
+    LLVMValueRef left;
+    if(node->left->type == BINOP){
+        left = generate_operations(qir, node->left);
+    } else if(node->left->type == VALUE) {
+        llvm_value(qir, node->left, strtol(node->left->value, NULL, 10));
+        left = *(node->left->llvm);
+    } else {
+        left = *(node->left->llvm);
+    }
+    LLVMValueRef right;
+    if(node->right->type == BINOP){
+        right = generate_operations(qir, node->right);
+    } else if(node->left->type == VALUE) {
+        llvm_value(qir, node->right, strtol(node->right->value, NULL, 10));
+        right = *(node->right->llvm);
+    } else {
+        right = *(node->right->llvm);
+    }
+    switch(*(node->value)){
+        case '+':
+            return LLVMBuildAdd(qir.builder, left, right, "");
+            break;
+        case '-':
+            return LLVMBuildSub(qir.builder, left, right, "");
+            break;
+        case '*':
+            return LLVMBuildMul(qir.builder, left, right, "");
+            break;
+        case '/':
+            return LLVMBuildMul(qir.builder, left, right, "");
+            break;
+        case '^':
+            
+        default:
+    }
 }
 
 void generate_instructions(qir_context qir, ast *node){
@@ -338,26 +395,50 @@ void generate_instructions(qir_context qir, ast *node){
 
         case NAME:
             if(node->llvm == NULL) {
+                diagnose d = {.line = node->line, .message = "llvm pointer NULL", .type = INTERNAL};
+                add_error_entry(d);
                 return;
             }
-            if(add_value(node->resolved_type, 0, node->llvm) == -1) return;
+            if(llvm_value(qir, node, 0) == -1) return;
 
             if(print) printf("NEW VAR %s:%p\n",node->name ,(void*)node->llvm);
             break;
 
         case ASSIGN:
-            // TODO
-            value = strtol(node->right->value, NULL, 10);
-            if(add_value(node->left->resolved_type, value, node->left->llvm) == -1) return;
-            if(node->left->var_type == VAR_QUBIT){
-                if(value == 1){
-                    call_function(qir, node->left->branch, "X");
-                }
+            if((node->left->type != NAME) && (node->left->type != IDENTIFIER)){
+                diagnose d = {.line = node->line, .message = "Left branch of assign is neither a reference or declaration", .type = INTERNAL};
+                add_error_entry(d);
+                return;
+            }
+
+            if(node->right->type == IDENTIFIER){
+                LLVMBuildStore(qir.builder, *(node->right->llvm), *(node->left->llvm));
+                
+            } else  if(node->right->type == VALUE){
+                LLVMBuildStore(qir.builder, *(node->right->llvm), *(node->left->llvm));
+            } else if(node->right->type == BINOP){
+                LLVMValueRef res = generate_operations(qir, node->right);
+                LLVMBuildStore(qir.builder, res, *(node->left->llvm));
+            } else {
+                diagnose d = {.line = node->line, .message = "Right branch of assign is neither a reference, value or operation", .type = INTERNAL};
+                add_error_entry(d);
+                return;
             }
 
             if(print) printf("NEW VAR %s:%p\n",node->left->name ,(void*)node->left->llvm);
             break;
+        
+        case LOOP:
+            break;
+        case CONDITIONAL:
+            break;
         case FUNCTION:
+            break;
+        case RETURN:
+            LLVMBuildRet(qir.builder, LLVMConstInt(i64_type, 0, 0));
+            if(!adaptive){
+                return;
+            }
             break;
         default:
             break;
@@ -379,6 +460,7 @@ FILE *generate_QIR(ast *root){
     i32_type = LLVMInt32TypeInContext(qir.context);
     i64_type = LLVMInt64TypeInContext(qir.context);
     i1_type = LLVMInt1TypeInContext(qir.context);
+    float_type = LLVMFloatTypeInContext(qir.context);
     void_type = LLVMVoidTypeInContext(qir.context);
     ptr_type = LLVMPointerTypeInContext(qir.context, 0);
     LLVMTypeRef one_param[1] = { ptr_type };
@@ -390,7 +472,7 @@ FILE *generate_QIR(ast *root){
     size_t size = count_nodes(root);
     variable *variable_list = analyse_ast(root);
     if(variable_list == NULL) goto dispose;
-    if(print) print_ast(root, 1);
+    if(print) print_type_ast(root, 1);
 
     if(print) printf("\n");
 
@@ -434,11 +516,11 @@ FILE *generate_QIR(ast *root){
     if(print) printf("\nGENERATOR:\n");
     generate_instructions(qir, root);
 
-    if(adaptive == 0) LLVMBuildBr(qir.builder, measure_block);
+    if(!adaptive) LLVMBuildBr(qir.builder, measure_block);
 
     // measure block
     // this block is only used in a base profile program
-    if(adaptive == 0){
+    if(!adaptive){
         LLVMPositionBuilderAtEnd(qir.builder, measure_block);
     
         for(int i = 0; i < required_num_results; i++){
@@ -474,9 +556,18 @@ FILE *generate_QIR(ast *root){
     snprintf(str_results, len_results+1, "%d", required_num_results);
 
     // define all attributes
+    char *str_profile;
+    int profile_size;
+    if(adaptive){
+        str_profile = "adaptive_profile";
+        profile_size = 16;
+    } else { // base profile
+        str_profile = "base_profile";
+        profile_size = 12;
+    }
     LLVMAttributeRef entryAttribute = LLVMCreateStringAttribute(qir.context, "entry_point", 11, "", 0);
     LLVMAttributeRef labelingAttribute = LLVMCreateStringAttribute(qir.context, "output_labeling_schema", 22, "", 0);
-    LLVMAttributeRef profileAttribute = LLVMCreateStringAttribute(qir.context, "qir_profiles", 12, "base_profile", 12);
+    LLVMAttributeRef profileAttribute = LLVMCreateStringAttribute(qir.context, "qir_profiles", 12, str_profile, profile_size);
     LLVMAttributeRef qubitsAttribute = LLVMCreateStringAttribute(qir.context, "required_num_qubits", 19, str_qubits, len_qubits);
     LLVMAttributeRef resultsAttribute = LLVMCreateStringAttribute(qir.context, "required_num_results", 20, str_results, len_results);
 
@@ -498,13 +589,27 @@ FILE *generate_QIR(ast *root){
     // add module flags these are QIR specific
     LLVMMetadataRef meta_major = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MAJOR_VERSION, 0));
     LLVMMetadataRef meta_minor = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MINOR_VERSION, 0));
-    LLVMMetadataRef meta_dynamic_qu = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, 0));
-    LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, 0));
+    LLVMMetadataRef meta_dynamic_qu = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, dynamic_qubits));
+    LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, dynamic_results));
 
     LLVMAddModuleFlag(qir.module, LLVMModuleFlagBehaviorError, "qir_major_version", 17, meta_major);
     LLVMAddModuleFlag(qir.module, 6, "qir_minor_version", 17, meta_minor);
     LLVMAddModuleFlag(qir.module, LLVMModuleFlagBehaviorError, "dynamic_qubit_management", 24, meta_dynamic_qu);
     LLVMAddModuleFlag(qir.module, LLVMModuleFlagBehaviorError, "dynamic_result_management", 25, meta_dynamic_res);
+    
+    // adaptive module flags
+    if(adaptive){
+        //LLVMMetadataRef meta_intcomp = LLVMValueAsMetadata()
+        //LLVMMetadataRef meta_floatcomp =
+        LLVMMetadataRef meta_ir_func = LLVMValueAsMetadata(LLVMConstInt(i1_type, 0, 0));
+        LLVMMetadataRef meta_back_br = LLVMValueAsMetadata(LLVMConstInt(i1_type, 0, 0)); // maybe i2 type
+        LLVMMetadataRef meta_mult_tgt_br = LLVMValueAsMetadata(LLVMConstInt(i1_type, 0, 0));
+        LLVMMetadataRef meta_mult_ret_pts = LLVMValueAsMetadata(LLVMConstInt(i1_type, 0, 0));
+
+        // TODO
+    }
+
+
 
     free(str_qubits);
     free(str_results);
@@ -543,5 +648,6 @@ FILE *generate_QIR(ast *root){
     LLVMDisposeBuilder(qir.builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);
+    check_errors();
     return output;
 }   

@@ -96,6 +96,8 @@ void print_ast(ast *root, int level){
             printf("├── UNKNOWN\n");
             break;
     }
+
+    
     
     
     // recurse sub-tree
@@ -137,6 +139,206 @@ void print_ast(ast *root, int level){
     }
 
     print_ast(root->branch, level);
+}
+
+void print_type_ast(ast *root, int level){
+    if (root == NULL) return;
+    // print current level
+    if((level > 1) && (root->type != ROOT)) printprefix(level);
+    char *str = "unknown";
+    switch(root->type){
+        case ROOT:
+            printf("├─> ROOT\n");
+            break;
+        case TYPE:
+            switch(root->resolved_type){
+                case VAR_QUBIT:
+                    str = "qubit";
+                    break;
+                case VAR_BIT:
+                    str = "bit";
+                    break;
+                case VAR_VOID:
+                    str = "void";
+                    break;
+                case VAR_VECTOR:
+                    str = "vector";
+                    break;
+                case VAR_DOUBLE:
+                    str = "double";
+                    break;
+                case VAR_INTEGER:
+                    str = "integer";
+                    break;
+                case VAR_NATURAL:
+                    str = "natural";
+                    break;
+                default:
+                    break;
+            }
+            printf("├── TYPE: '%s'\n", str);
+            break;
+        case NAME:
+            switch(root->resolved_type){
+                case VAR_QUBIT:
+                    str = "qubit";
+                    break;
+                case VAR_BIT:
+                    str = "bit";
+                    break;
+                case VAR_VOID:
+                    str = "void";
+                    break;
+                case VAR_VECTOR:
+                    str = "vector";
+                    break;
+                case VAR_DOUBLE:
+                    str = "double";
+                    break;
+                case VAR_INTEGER:
+                    str = "integer";
+                    break;
+                case VAR_NATURAL:
+                    str = "natural";
+                    break;
+                default:
+                    break;
+            }
+            printf("├── NAME: '%s': %s\n",root->name, str);
+            break;
+        case IDENTIFIER:
+            switch(root->resolved_type){
+                case VAR_QUBIT:
+                    str = "qubit";
+                    break;
+                case VAR_BIT:
+                    str = "bit";
+                    break;
+                case VAR_VOID:
+                    str = "void";
+                    break;
+                case VAR_VECTOR:
+                    str = "vector";
+                    break;
+                case VAR_DOUBLE:
+                    str = "double";
+                    break;
+                case VAR_INTEGER:
+                    str = "integer";
+                    break;
+                case VAR_NATURAL:
+                    str = "natural";
+                    break;
+                default:
+                    break;
+            }
+            printf("├── IDENTFIER: '%s': %s\n",root->name, str);
+            break;
+        case CALL:
+            printf("├── CALL: '%s'\n",root->value);
+            break;
+        case VALUE:
+            switch(root->resolved_type){
+                case VAR_QUBIT:
+                    str = "qubit";
+                    break;
+                case VAR_BIT:
+                    str = "bit";
+                    break;
+                case VAR_VOID:
+                    str = "void";
+                    break;
+                case VAR_VECTOR:
+                    str = "vector";
+                    break;
+                case VAR_DOUBLE:
+                    str = "double";
+                    break;
+                case VAR_INTEGER:
+                    str = "integer";
+                    break;
+                case VAR_NATURAL:
+                    str = "natural";
+                    break;
+                default:
+                    break;
+            }
+            printf("├── VALUE: '%s': %s\n", root->value, str);
+            break;
+        case ASSIGN:
+            printf("├── ASSIGN: '%c'\n", *(root->value));
+            break;
+        case BINOP:
+            printf("├── BINOP: '%c'\n", *(root->value));
+            break;
+        case BOOLOP:
+            printf("├── BOOLOP: '%c'\n", *(root->value));
+            break;
+        case CONDITIONAL:
+            printf("├── IF: \n");
+            break;
+        case LOOP:
+            printf("├── LOOP: \n");
+            break;
+        case INCLUDE:
+            printf("├── INCLUDE: '%s'\n", root->value);
+            break;
+        case FUNCTION:
+            printf("├── FUNCTION: '%s'\n", root->name);
+            break;
+        case MEASURE:
+            printf("├── MEASURE: '%s'\n", root->name);
+            break;
+        case RETURN:
+            printf("├── RETURN\n");
+            break;
+        default:
+            printf("├── UNKNOWN\n");
+            break;
+    }
+
+    
+    
+    
+    // recurse sub-tree
+    switch(root->type){
+        case BOOLOP:
+        case BINOP:
+        case ASSIGN:
+            printprefix(level+1);
+            printf("├─> Left:\n");
+            print_type_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Right:\n");
+            print_type_ast(root->right, level+1);
+            break;
+        case LOOP:
+        case FUNCTION:
+            printprefix(level+1);
+            printf("├─> Parameters:\n");
+            print_type_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Body:\n");
+            print_type_ast(root->right, level+1);
+            break;
+        case CONDITIONAL:
+            printprefix(level+1);
+            printf("├─> Boolean logic:\n");
+            print_type_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Body:\n");
+            print_type_ast(root->right, level+1);
+            break;
+        case CALL:
+            printprefix(level+1);
+            printf("├─> Parameters:\n");
+            print_type_ast(root->left, level+1);
+            break;
+        default:
+            break;
+    }
+
+    print_type_ast(root->branch, level);
 }
 
 void print_token_list(token* first_token){
@@ -224,7 +426,7 @@ void print_var_list(variable *var_list, size_t size){
                 default:
                     break;
             }
-        printf("Var %lu: %s '%s' = %s\n", i, str, var_list[i].name, var_list[i].value);
+        printf("Var %lu: %s '%s'\n", i, str, var_list[i].name);
     }
 }
 
@@ -258,6 +460,7 @@ void free_ast(ast *root){
             free(root->name);
             break;
         case VALUE:
+            free(root->llvm);
             free(root->value);
             break;
         case BINOP:
@@ -282,7 +485,6 @@ void free_ast(ast *root){
 void free_var_list(variable *var_list, size_t size){
     for(size_t i = 0; i < size; i++){
         free(var_list[i].name);
-        free(var_list[i].value);
         free(var_list[i].llvm);
     }
     free(var_list);

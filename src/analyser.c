@@ -9,7 +9,9 @@
 #include <stdbool.h>
 
 bool print = 0;
-bool adaptive = 0;
+
+extern LLVMTypeRef i64_type;
+extern LLVMTypeRef float_type;
 
 int count_nodes(ast *root){
     if(root == NULL) return 0;
@@ -17,9 +19,10 @@ int count_nodes(ast *root){
         case NAME:
             return count_nodes(root->branch)+1;
         case ASSIGN:
-            return count_nodes(root->left)+count_nodes(root->right)+count_nodes(root->branch);
-        case CALL:
             return count_nodes(root->left)+count_nodes(root->branch);
+        case LOOP:
+        case CONDITIONAL:
+            return count_nodes(root->right)+count_nodes(root->branch);
         default:
             return count_nodes(root->branch);
     }
@@ -29,7 +32,6 @@ int count_nodes(ast *root){
 variable create_var(enum variable_type type, char *name){
     variable new_var;
     new_var.type = type;
-    new_var.value = NULL;
     new_var.llvm = calloc(1, sizeof(LLVMValueRef));
     if(!new_var.llvm){
         diagnose d = {.line = -1, .message = "Failed to allocate memory llvm pointer", .type = FATAL};
@@ -71,6 +73,10 @@ int add_var(variable new_var, variable *variable_list, size_t size){
     int pos = lookup_var(new_var.name, variable_list, size);
     if(pos >= 0){
         // already in the list
+        char *message = malloc(strlen(new_var.name)+52);
+        sprintf(message, "Variable with the name '%s' is already in the list", new_var.name);
+        diagnose d = {.line = -1, .message = message, .type = ERROR};
+        add_error_entry(d);
         return -1;
     }
     
@@ -82,36 +88,69 @@ int add_var(variable new_var, variable *variable_list, size_t size){
         }
     }
 
-    if(pos < 0) return -1;
-
     variable_list[pos] = new_var;
     return pos;
 }
 
-enum variable_type check_type(char *value){
-    // TODO
-    if(value == NULL) return -1;
-    return VAR_VOID;
+int check_type(ast *node, variable *variable_list, size_t size){
+    if(node->type == IDENTIFIER){
+        int pos = lookup_var(node->name, variable_list, size);
+        if(pos < 0){
+                char *message = malloc(strlen(node->name)+40);
+                sprintf(message, "Variable with the name '%s' is unknown", node->name);
+                diagnose d = {.line = node->line, .message = message, .type = ERROR};
+                add_error_entry(d);
+                return -1;
+            }
+        node->resolved_type = variable_list[pos].type;
+        node->llvm = variable_list[pos].llvm;
+        return pos;
+
+    } else if(node->type == VALUE){
+        // we give every value a llvm value in the analyser
+        char *pos = strchr(node->value, '.');
+        if(pos == NULL){ // integer
+            node->resolved_type = VAR_INTEGER;
+            node->llvm = calloc(1, sizeof(LLVMValueRef));
+            if(!(node->llvm)){
+                diagnose d = {.line = -1, .message = "Failed to allocate memory llvm pointer", .type = FATAL};
+                add_error_entry(d);
+            }
+            long val = strtol(node->value, NULL, 10);
+            *(node->llvm) = LLVMConstInt(i64_type, val, 0);
+        } else { // floating point number
+            node->resolved_type = VAR_DOUBLE;
+            node->llvm = calloc(1, sizeof(LLVMValueRef));
+            if(!(node->llvm)){
+                diagnose d = {.line = -1, .message = "Failed to allocate memory llvm pointer", .type = FATAL};
+                add_error_entry(d);
+            }
+            double val = strtof(node->value, NULL);
+            *(node->llvm) = LLVMConstInt(float_type, val, 0);
+        }
+        return 0;
+
+    } else{
+        diagnose d = {.line = -1, .message = "Can only check the type of references and values", .type = INTERNAL};
+        add_error_entry(d);
+        return -1;
+    }
 }
 
 variable analyse_name(ast *node, variable *variable_list, size_t size){
     if(node->type != NAME){
         diagnose d = {.line = node->line, .message = "Expected variable definition", .type = ERROR};
         add_error_entry(d);
-        return (variable){.type = -1, .name = NULL, .llvm = NULL, .value = NULL};
+        return (variable){.type = -1, .name = NULL, .llvm = NULL};
     }
 
     // create a basic variable without a value and add it to the list
     variable new_var = create_var(node->resolved_type, node->name);
     int pos = add_var(new_var, variable_list, size);
     if(pos == -1){
-        char *message = malloc(64);
-        sprintf(message, "Variable with the name '%s' exists already", new_var.name);
         free(new_var.name);
         free(new_var.llvm);
-        diagnose d = {.line = node->line, .message = message, .type = ERROR};
-        add_error_entry(d);
-        return (variable){.type = -1, .name = NULL, .llvm = NULL, .value = NULL};
+        return (variable){.type = -1, .name = NULL, .llvm = NULL};
     }
     node->llvm = new_var.llvm;
     
@@ -121,20 +160,11 @@ variable analyse_name(ast *node, variable *variable_list, size_t size){
 int check_parameters(ast *node, int num_param, variable *variable_list, size_t size){
     for(int i = 0; i < num_param; i++){
         if(node->type == IDENTIFIER){
-            int pos = lookup_var(node->name, variable_list, size);
-            if(pos < 0){
-                char *message = malloc(64);
-                sprintf(message, "Variable with the name '%s' is unknown", node->name);
-                diagnose d = {.line = node->line, .message = message, .type = ERROR};
-                add_error_entry(d);
-                return -1;
-            }
-            node->llvm = variable_list[pos].llvm;
-            node->resolved_type = variable_list[pos].type;
-
+            int r = check_type(node, variable_list, size);
+            if(r < 0) return -1;
         } else if(node->type == VALUE){
-            node->resolved_type = check_type(node->value);
-
+            int r = check_type(node, variable_list, size);
+            if(r != 0) return -1;
         } else {
             diagnose d = {.line = node->line, .message = "Function call can only contain Identifiers and Values", .type = ERROR};
             add_error_entry(d);
@@ -196,26 +226,39 @@ int analyse_call(ast *node, variable *variable_list, size_t size){
     } else if(strcmp(node->name, "RZZ") == 0){
         if(check_parameters(node->left, 2, variable_list, size) == -1) return -1;
         return 0;
-    } 
+    }
+
+    char *message = malloc(strlen(node->name)+27);
+    sprintf(message, "Unkown function name '%s'", node->name);
+    diagnose d = {.line = node->line, .message = message, .type = ERROR};
+    add_error_entry(d);
+
     return -1;
 }
 
 int analyse_left(ast *node, variable *variable_list, size_t size){
     if(node->type == IDENTIFIER){
-        int pos = lookup_var(node->name, variable_list, size);
+        int pos = check_type(node, variable_list, size);
         if(pos < 0) return -1;
-
         return pos;
-
+        
     } else if(node->type == NAME){
         variable new_var = analyse_name(node, variable_list, size);
         if((int)new_var.type == -1) return -1;
         
         int pos = lookup_var(node->name, variable_list, size);
-
-        if(pos < 0) return -1;
-        else return pos;
-
+        
+        if(pos < 0){
+            char *message = malloc(strlen(node->name)+59);
+            sprintf(message, "A problem occurred while adding variable '%s' to the list", node->name);
+            diagnose d = {.line = node->line, .message = message, .type = INTERNAL};
+            add_error_entry(d);
+            return -1;
+        }
+        else {
+            return pos;
+        }
+        
     } else {
         diagnose d = {.line = node->line, .message = "Expected Variable definition or reference on the left side of an assign", .type = ERROR};
         add_error_entry(d);
@@ -223,16 +266,59 @@ int analyse_left(ast *node, variable *variable_list, size_t size){
     }
 }
 
-char* analyse_right(ast *node, variable *variable_list, size_t size){
-    // MUCH TODO HERE
-    if((variable_list == NULL) || (size == 0)) return NULL;
+int analyse_operations(ast *node, variable *variable_list, size_t size){
+    if((variable_list == NULL) || (size == 0)) return -1;
 
-    if(node->type == VALUE){
-        return node->value;
-    } else {
-        diagnose d = {.line = node->line, .message = "Unable to analyse assign", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
+    int r;
+    diagnose d;
+    switch (node->type){
+        case BINOP:
+            r = analyse_operations(node->left, variable_list, size);
+            if(r < 0) return -1;
+            r = analyse_operations(node->right, variable_list, size);
+            if(r < 0) return -1;
+            return 0;
+
+        case VALUE:
+            r = check_type(node, variable_list, size);
+            if(r != 0) return -1;
+            return r;
+
+        case IDENTIFIER:
+            r = check_type(node, variable_list, size);
+            if(r < 0) return -1;   
+            return r;
+
+        default:
+            d = (diagnose){.line = node->line, .message = "Unable to binary operation", .type = ERROR};
+            add_error_entry(d);
+            return -1;
+    }
+}
+
+int analyse_right(ast *node, variable *variable_list, size_t size){
+    if((variable_list == NULL) || (size == 0)) return -1;
+
+    int r;
+    diagnose d;
+    switch (node->type){
+        case VALUE:
+            r = check_type(node, variable_list, size);
+            if(r != 0) return -1;
+            return r;
+
+        case IDENTIFIER:
+            r = check_type(node, variable_list, size);
+            if(r < 0) return -1;   
+            return r;
+
+        case BINOP:
+            return analyse_operations(node, variable_list, size);
+
+        default:
+            d = (diagnose){.line = node->line, .message = "Unable to analyse right expression", .type = ERROR};
+            add_error_entry(d);
+            return -1;
     }
 }
 
@@ -267,10 +353,7 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
             res = analyse_left(node->left, variable_list, size);
             if(res == -1) return -1;
 
-            char *value = analyse_right(node->right, variable_list, size);
-            size_t value_size = strlen(value)+1;
-            variable_list[res].value = malloc(value_size);
-            strncpy(variable_list[res].value, value, value_size);
+            res = analyse_right(node->right, variable_list, size);
             
             return walk_ast(node->branch, variable_list, size);
             break;
@@ -311,7 +394,7 @@ variable* analyse_ast(ast *root){
     if(res != 0){
         diagnose d = {.line = -1, .message = "ERROR during analysis", .type = ERROR};
         add_error_entry(d);
-        free(variable_list);
+        free_var_list(variable_list, size);
     }
     check_errors();
 

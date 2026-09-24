@@ -39,7 +39,8 @@ int main(int argc, char **argv){
                     // help -> print man page
                     case 'h':
                         print_man_page();
-                        return 0;
+                        goto end;
+                        break;
                     // qir -> generate quantum ir instead of bitcode
                     case 'l':
                         ll = 1;

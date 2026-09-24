@@ -496,7 +496,12 @@ ast* parse_binop(ast *current_node){
         return NULL;
     }
     if(last_eol == NULL){
-        diagnose d = {.line = current_token->line, .message = "Cannot parse operation", .type = ERROR};
+        diagnose d = {.line = current_token->line, .message = "Cannot parse operation due to NULL pointer", .type = INTERNAL};
+        add_error_entry(d);
+        return NULL;
+    }
+    if((last_eol->type != ASSIGN) && (last_eol->type != BINOP)){
+        diagnose d = {.line = current_token->line, .message = "Cannot parse operation due to wrong type", .type = INTERNAL};
         add_error_entry(d);
         return NULL;
     }
@@ -557,14 +562,15 @@ ast* parse_boolop(ast *current_node){
     ast *left;
     if(last_eol->type == ROOT){
         if(last_eol->branch == NULL){
-            fprintf(stderr, "OHNOOOOOOOOOOOOOOOOOOOO\n");
+            // we are checking
         }
         left = last_eol->branch;
     } else if(last_eol->type == BOOLOP){
         left = last_eol->right->branch;
     } else {
-        fprintf(stderr, "TODO!!!\n");
-        // TODO
+        diagnose d = {.line = current_token->line, .message = "Could not parse tree order in boolop", .type = INTERNAL};
+        add_error_entry(d);
+        return NULL;
     }
     ast *temp_node = create_node();
 
@@ -584,9 +590,6 @@ ast* parse_boolop(ast *current_node){
         last_eol->branch = new_node;
     } else if(last_eol->type == BOOLOP){
         last_eol->right->branch = new_node;
-    } else {
-        fprintf(stderr, "TODO!!!\n");
-        // TODO
     }
     last_eol = new_node;
     
@@ -858,6 +861,11 @@ ast* parse_indicator(ast *current_node){
     }
 
     // now we assume we are handling a variable reference aka an identifier
+    if(current_token->type != INDICATOR){
+        diagnose d = {.line = current_token->line, .message = "Wrong token type for variable reference", .type = INTERNAL};
+        add_error_entry(d);
+        return NULL;
+    }
     ast *new_node = create_node();
     new_node->type = IDENTIFIER;
     

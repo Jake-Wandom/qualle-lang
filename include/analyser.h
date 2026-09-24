@@ -7,7 +7,6 @@
 typedef struct {
     enum variable_type type;
     char *name;
-    char *value;
     LLVMValueRef *llvm;
 } variable;
 

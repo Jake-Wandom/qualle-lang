@@ -7,5 +7,7 @@ extern bool ll;
 extern bool optimisation;
 extern bool print;
 extern bool adaptive;
+extern bool dynamic_qubits;
+extern bool dynamic_results;
 
 #endif
