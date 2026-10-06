@@ -65,11 +65,10 @@ int main(int argc, char **argv){
             // we increase num_of_files, realloc and try to open the file and store it in files
             num_of_files++;
             files = realloc(files, num_of_files*sizeof(FILE*));
-            *(files+num_of_files-1) = fopen(argv[i], "r+");
+            *(files+num_of_files-1) = fopen(argv[i], "r");
             
             if(*(files+num_of_files-1) == NULL){
                 fprintf(stderr, "Could not locate or open file %s\n", argv[i]);
-                free(files);
                 return_value = 2;
                 goto end;
             }
@@ -108,14 +107,14 @@ int main(int argc, char **argv){
             strcat(main_buffer, line_buffer);
         }
 
-        if(print) printf("\n");
+        if(print) printf("\n\n");
 
         if(print) printf("LEXER PHASE:\n");
         first_token = get_token(main_buffer);
         if(print) print_token_list(first_token);
         
         if(print) printf("\n");
-
+        
         if(print) printf("PARSER PHASE:\n");
         ast *root = generate_ast(first_token);
         if(print) print_ast(root, 1);

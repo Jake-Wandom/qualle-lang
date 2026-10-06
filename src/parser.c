@@ -166,7 +166,18 @@ The loop body is parsed in the right branch and the condition is parsed in the l
 ast* parse_loop(ast *current_node){
     ast *new_node = create_node();
     new_node->type = LOOP;
+    new_node->value = malloc(1);
     current_node->branch = new_node;
+
+    if(strcmp(current_token->value, "for") == 0){
+        *(new_node->value) = 'f';
+    } else if(strcmp(current_token->value, "while") == 0){
+        *(new_node->value) = 'w';
+    } else {
+        diagnose d = {.line = current_token->line, .message = "Loop name has to be for or while", .type = ERROR};
+        add_error_entry(d);
+        return NULL;
+    }
 
     switch_token(1);
 
@@ -248,6 +259,8 @@ The if body is parsed in the right branch and the condition is parsed in the lef
 ast* parse_if(ast *current_node){
     ast *new_node = create_node();
     new_node->type = CONDITIONAL;
+    new_node->value = malloc(1);
+    *(new_node->value) = 'i';
     current_node->branch = new_node;
 
     switch_token(1);
@@ -303,7 +316,6 @@ ast* parse_if(ast *current_node){
     in_body = 0;
     
     new_node->right = temp_node->branch;
-    free(temp_node);
 
     // we need to forward to the end of the conditional body
     while(current_token != NULL){
@@ -320,6 +332,51 @@ ast* parse_if(ast *current_node){
     }
 
     switch_token(1);
+
+    if((current_token->type == INDICATOR) && (strcmp(current_token->value, "else"))){
+        *(new_node->value) = 'e';
+        ast *else_node = create_node();
+        else_node->type = CONDITIONAL;
+        else_node->left = new_node->right;
+        new_node->right = else_node;
+
+        switch_token(1);
+
+        if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
+            diagnose d = {.line = current_token->line, .message = "Expected '{' in else definition", .type = ERROR};
+            add_error_entry(d);
+            return NULL;
+        }
+
+        switch_token(1);
+
+        temp_node->branch = NULL;
+        temp_node->value = NULL;
+        
+        in_body = 1;
+        parse_start(temp_node);
+        in_body = 0;
+        
+        else_node->right = temp_node->branch;
+        free(temp_node);
+
+        // we need to forward to the end of the conditional body
+        while(current_token != NULL){
+            if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == '}')){
+                break;
+            }
+            switch_token(1);
+        }   
+
+        if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
+            diagnose d = {.line = current_token->line, .message = "Expected '}' in else definition", .type = ERROR};
+            add_error_entry(d);
+            return NULL;
+        }
+
+        switch_token(1);
+    }
+    free(temp_node);
     return parse_start(new_node);
 }
 
@@ -550,21 +607,48 @@ ast* parse_boolop(ast *current_node){
         add_error_entry(d);
         return NULL;
     }
+    
+    /*
+    if(*(current_token->value) == '!'){
+        ast *new_node = create_node();
+        new_node->type = BOOLOP;
+        new_node->value = malloc(1);
+        current_node->branch = new_node;
+        if(!new_node->value){
+            diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+            add_error_entry(d);
+            return NULL;
+        }
+        *(new_node->value) = *(current_token->value);
+        
+        switch_token(1);
+        if((current_token->type != INDICATOR) || (current_token->value == NULL)){
+            diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
+            add_error_entry(d);
+            return NULL;
+        }
+        return parse_start(new_node);
+    }
+    */
 
     // we use last_eol as an anchor point to append our new node and use the old nodes as left branch
     // since we are in an if conditional we assume last_eol points to the last operation node.
     
     ast *left;
     if(last_eol->type == ROOT){
+        // The parse_if node
         if(last_eol->branch == NULL){
-            fprintf(stderr, "OHNOOOOOOOOOOOOOOOOOOOO\n");
+            diagnose d = {.line = current_token->line, .message = "Unforseen behaviour while parsign boolop", .type = INTERNAL};
+            add_error_entry(d);
+            return NULL;
         }
         left = last_eol->branch;
     } else if(last_eol->type == BOOLOP){
         left = last_eol->right->branch;
     } else {
-        fprintf(stderr, "TODO!!!\n");
-        // TODO
+        diagnose d = {.line = current_token->line, .message = "Boolean operation unrecognised in this context", .type = WARNING};
+        add_error_entry(d);
+        left = last_eol->branch;
     }
     ast *temp_node = create_node();
 
@@ -584,10 +668,8 @@ ast* parse_boolop(ast *current_node){
         last_eol->branch = new_node;
     } else if(last_eol->type == BOOLOP){
         last_eol->right->branch = new_node;
-    } else {
-        fprintf(stderr, "TODO!!!\n");
-        // TODO
     }
+
     last_eol = new_node;
     
     switch_token(1);
@@ -643,20 +725,21 @@ since we can only measure one qubit we store the qubit name and LLVMValueRef in 
 */
 ast* parse_measure(ast *current_node){
     if(current_token->next_token->type != BRACKET_OPEN){
-        diagnose d = {.line = current_token->line, .message = "Expected open bracket in measure call'", .type = ERROR};
+        diagnose d = {.line = current_token->line, .message = "Expected open bracket in measure call'", .type = WARNING};
         add_error_entry(d);
-        return NULL;
-    }
-    if(*(current_token->next_token->value) != '('){
+        switch_token(1);
+    } else if(*(current_token->next_token->value) != '('){
         diagnose d = {.line = current_token->line, .message = "Expected '(' bracket", .type = WARNING};
         add_error_entry(d);
+        switch_token(1);
+    } else {
+        switch_token(2);
     }
 
     ast *new_node = create_node();
     new_node->type = MEASURE;
 
     current_node->branch = new_node;
-    switch_token(2);
 
     if(current_token->type != INDICATOR){
         diagnose d = {.line = current_token->line, .message = "Expected qubit name to measure", .type = ERROR};
@@ -677,10 +760,10 @@ ast* parse_measure(ast *current_node){
 
     if(current_token->type != BRACKET_CLOSE){
         diagnose d = {.line = current_token->line, .message = "Expected closed bracket in measure call", .type = ERROR};
+        if(current_token->type == END_OF_LINE) d.type = WARNING;
         add_error_entry(d);
-        return NULL;
-    }
-    if(*(current_token->value) != ')'){
+        if(d.type == ERROR) return NULL;
+    } else if(*(current_token->value) != ')'){
         diagnose d = {.line = current_token->line, .message = "Expected ')' bracket", .type = WARNING};
         add_error_entry(d);
     }
@@ -903,12 +986,13 @@ ast* parse_number(ast *current_node){
         new_node->resolved_type = VAR_DOUBLE;
         switch_token(1);
         if(current_token->type == NUMBER){
-            new_node->value = realloc(new_node->value, size+strlen(current_token->value));
+            new_node->value = realloc(new_node->value, size+strlen(current_token->value)+1);
             if(!new_node->value){
                 diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
                 add_error_entry(d);
                 return NULL;
             }
+            strcat(new_node->value, ".");
             strcat(new_node->value, current_token->value);
             switch_token(1);
         }

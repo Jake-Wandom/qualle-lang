@@ -63,6 +63,8 @@ void check_errors(){
     }
     if(errors.size > 0){
         print_errors();
+    } else {
+        fprintf(stderr, "NO ERRORS DURING THE LAST PHASE :)\n");
     }
 }
 

@@ -23,6 +23,7 @@ static LLVMTypeRef void_type;
 static LLVMTypeRef i32_type;
 static LLVMTypeRef i64_type;
 static LLVMTypeRef i1_type;
+static LLVMTypeRef double_type;
 
 // the number of qubits that are declared and returned is counted dynamically
 static int required_num_qubits = 0;
@@ -67,6 +68,9 @@ static LLVMTypeRef ryy_type;
 static LLVMValueRef ryy_function;
 static LLVMTypeRef rzz_type;
 static LLVMValueRef rzz_function;
+
+// global variable for the current function
+static LLVMValueRef current_function;
 
 int find_variable(variable *var_list, size_t size, LLVMValueRef *llvm){
     for(size_t i = 0; i < size; i++){
@@ -276,21 +280,45 @@ void call_function(qir_context qir, ast *node, char *name){
 
 }
 
-int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *llvm){
+LLVMTypeRef get_type(enum variable_type type){
+    switch(type){
+        case VAR_QUBIT:
+            return ptr_type;
+        case VAR_BIT:
+            return i1_type;
+        case VAR_NATURAL:
+        case VAR_INTEGER:
+            return i64_type;
+        case VAR_VOID:
+            return void_type;
+        case VAR_DOUBLE:
+            return double_type;
+    }
+}
+
+int add_value(qir_context qir, enum variable_type type, LLVMValueRef value, LLVMValueRef *llvm){
     diagnose d;
     switch(type){
         case VAR_QUBIT:
             *llvm = LLVMConstIntToPtr(LLVMConstInt(i64_type, required_num_qubits, 0), ptr_type);
-
             required_num_qubits++;
             break;
 
         case VAR_BIT:
-            *llvm = LLVMConstInt(i1_type, value, 0);
+            value = LLVMBuildIntCast2(qir.builder, value, i1_type, 1, "");
+            *llvm = LLVMBuildAlloca(qir.builder, i1_type, "");
+            LLVMBuildStore(qir.builder, value, *llvm);
             break;
 
         case VAR_INTEGER:
-            *llvm = LLVMConstInt(i32_type, value, 0);
+            value = LLVMBuildIntCast2(qir.builder, value, i64_type, 1, "");
+            *llvm = LLVMBuildAlloca(qir.builder, i64_type, "");
+            LLVMBuildStore(qir.builder, value, *llvm);
+            break;
+
+        case VAR_DOUBLE:
+            *llvm = LLVMBuildAlloca(qir.builder, double_type, "");
+            LLVMBuildStore(qir.builder, value, *llvm);
             break;
 
         default:
@@ -302,6 +330,68 @@ int add_value(enum variable_type type, unsigned long long value, LLVMValueRef *l
     return 0;
 }
 
+LLVMValueRef determine_bool(qir_context qir, ast *node){
+    if(node->type != BOOLOP){
+        diagnose d = {.line = node->line, .message = "Expected boolean operation", .type = INTERNAL};
+        add_error_entry(d);
+        return NULL;
+    }
+
+    LLVMValueRef condition;
+    switch(*(node->value)){
+        case '|':
+        case '&':
+        case '<':
+        case '>':
+        case '=':
+            break;
+
+        case '+':
+        case '-':
+        case '*':
+        case '/':
+        case '^':
+        case '%':
+            break;
+    }
+}
+
+LLVMValueRef determine_value(qir_context qir, ast *node){
+    switch(node->type){
+        case BINOP:
+            LLVMValueRef left = determine_value(qir, node->left);
+            LLVMValueRef right = determine_value(qir, node->right);
+            switch(*(node->value)){
+                case '+':
+                    return LLVMBuildAdd(qir.builder, left, right, "");
+                case '-':
+                    return LLVMBuildSub(qir.builder, left, right, "");
+                case '*':
+                    return LLVMBuildMul(qir.builder, left, right, "");
+                case '/':
+                    return LLVMBuildSDiv(qir.builder, left, right, "");
+                case '%':
+                    return LLVMBuildSRem(qir.builder, left, right, "");
+            }
+            break;
+        case IDENTIFIER:
+            if(*(node->llvm) == NULL){
+                diagnose d = {.line = node->line, .message = "LLVM Null pointer", .type = INTERNAL};
+                add_error_entry(d);
+            }
+            return LLVMBuildLoad2(qir.builder, get_type(node->resolved_type), *(node->llvm), "");
+        case VALUE:
+            if(node->resolved_type == VAR_QUBIT){
+                return (LLVMValueRef)0;
+            } else if(node->resolved_type == VAR_DOUBLE){
+                fprintf(stderr, "DOUBLE HERE: %d\n");
+                return LLVMConstInt(double_type, strtod(node->value, NULL), 0);
+            } else {
+                return LLVMConstInt(get_type(node->resolved_type), strtol(node->value, NULL, 10), 0);
+            }
+    }
+}
+
 void generate_instructions(qir_context qir, ast *node){
     if(!node) return;
     if(!adaptive && measured && (node->type != MEASURE)){
@@ -310,7 +400,7 @@ void generate_instructions(qir_context qir, ast *node){
         return;
     }
 
-    int value;
+    LLVMValueRef value;
     switch(node->type){
         case CALL:
             call_function(qir, node->left, node->name);
@@ -340,16 +430,15 @@ void generate_instructions(qir_context qir, ast *node){
             if(node->llvm == NULL) {
                 return;
             }
-            if(add_value(node->resolved_type, 0, node->llvm) == -1) return;
+            if(add_value(qir, node->resolved_type, 0, node->llvm) == -1) return;
 
             if(print) printf("NEW VAR %s:%p\n",node->name ,(void*)node->llvm);
             break;
 
         case ASSIGN:
-            // TODO
-            value = strtol(node->right->value, NULL, 10);
-            if(add_value(node->left->resolved_type, value, node->left->llvm) == -1) return;
-            if(node->left->var_type == VAR_QUBIT){
+            value = determine_value(qir, node->right);
+            if(add_value(qir, node->left->resolved_type, value, node->left->llvm) == -1) return;
+            if(node->left->resolved_type == VAR_QUBIT){
                 if(value == 1){
                     call_function(qir, node->left->branch, "X");
                 }
@@ -358,6 +447,86 @@ void generate_instructions(qir_context qir, ast *node){
             if(print) printf("NEW VAR %s:%p\n",node->left->name ,(void*)node->left->llvm);
             break;
         case FUNCTION:
+            break;
+        case LOOP:
+            if(*(node->value) == 'f'){
+                // for loop building blocks
+                LLVMBasicBlockRef for_condition_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "for_condition");
+                LLVMBasicBlockRef for_body_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "for_body");
+                LLVMBasicBlockRef for_latch_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "for_latch");
+                LLVMBasicBlockRef for_exit_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "for_exit");
+
+                // TODO determine value
+                LLVMValueRef init = LLVMConstInt(i64_type, 0, 0);
+                LLVMBuildBr(qir.builder, for_condition_block);
+                LLVMPositionBuilderAtEnd(qir.builder, for_condition_block);
+
+                LLVMValueRef phi = LLVMBuildPhi(qir.builder, i64_type, "i");
+                LLVMAddIncoming(phi, &init, &for_condition_block, 1); 
+
+                LLVMValueRef limit = LLVMConstInt(i64_type, 1, 0); // TODO
+                LLVMValueRef condition = LLVMBuildICmp(qir.builder, LLVMIntSLT, phi, limit, "i_lt_n");
+                LLVMBuildCondBr(qir.builder, condition, for_body_block, for_exit_block);
+
+                LLVMPositionBuilderAtEnd(qir.builder, for_body_block);
+                generate_instructions(qir, node->right);
+                LLVMBuildBr(qir.builder, for_latch_block);
+
+                LLVMPositionBuilderAtEnd(qir.builder, for_latch_block);
+                LLVMValueRef next = LLVMBuildAdd(qir.builder, LLVMConstInt(i64_type, 1, 0), phi, "next");
+                LLVMBuildBr(qir.builder, for_condition_block);
+
+                LLVMAddIncoming(phi, &next, &for_latch_block, 1);
+
+                LLVMPositionBuilderAtEnd(qir.builder, for_exit_block);
+
+            } else if(*(node->value) == 'w'){
+                // while loop building blocks
+                LLVMBasicBlockRef while_condition_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "while_condition");
+                LLVMBasicBlockRef while_body_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "while_body");
+                LLVMBasicBlockRef while_exit_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "while_exit");
+
+                LLVMPositionBuilderAtEnd(qir.builder, while_condition_block);
+                LLVMValueRef condition = determine_bool(qir, node->left);
+                LLVMBuildCondBr(qir.builder, condition, while_body_block, while_exit_block);
+
+                // body
+                LLVMPositionBuilderAtEnd(qir.builder, while_body_block);
+                generate_instructions(qir, node->right);
+                LLVMBuildBr(qir.builder, while_condition_block);
+
+                // exit while
+                LLVMPositionBuilderAtEnd(qir.builder, while_exit_block);
+                
+            } else {
+                diagnose d = {.line = node->line, .message = "Unable to determine loop type", .type = INTERNAL};
+                add_error_entry(d);
+                return;
+            }
+            break;
+        case CONDITIONAL:
+            LLVMBasicBlockRef if_condition_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "if_condition");
+            LLVMBasicBlockRef if_body_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "if_body");
+            LLVMBasicBlockRef else_body_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "else_body");
+            LLVMBasicBlockRef continue_block = LLVMAppendBasicBlockInContext(qir.context, current_function, "continue");
+
+            LLVMPositionBuilderAtEnd(qir.builder, if_condition_block);
+            LLVMValueRef condition = determine_bool(qir, node->left);
+            if(*(node->value) == 'i'){
+                LLVMBuildCondBr(qir.builder, condition, if_body_block, continue_block);
+                LLVMPositionBuilderAtEnd(qir.builder, if_body_block);
+                generate_instructions(qir, node->right);
+                LLVMBuildBr(qir.builder, continue_block);
+
+            } else {
+                LLVMBuildCondBr(qir.builder, condition, if_body_block, else_body_block);
+                LLVMPositionBuilderAtEnd(qir.builder, if_body_block);
+                generate_instructions(qir, node->right->left);
+                LLVMPositionBuilderAtEnd(qir.builder, else_body_block);
+                generate_instructions(qir, node->right->right);
+                LLVMBuildBr(qir.builder, continue_block);
+            }
+            LLVMPositionBuilderAtEnd(qir.builder, continue_block);
             break;
         default:
             break;
@@ -381,6 +550,7 @@ FILE *generate_QIR(ast *root){
     i1_type = LLVMInt1TypeInContext(qir.context);
     void_type = LLVMVoidTypeInContext(qir.context);
     ptr_type = LLVMPointerTypeInContext(qir.context, 0);
+    double_type = LLVMDoubleTypeInContext(qir.context);
     LLVMTypeRef one_param[1] = { ptr_type };
     LLVMTypeRef two_param[2] = { ptr_type , ptr_type };
 
@@ -401,6 +571,7 @@ FILE *generate_QIR(ast *root){
     // main function
     LLVMTypeRef main_type = LLVMFunctionType(i64_type, NULL, 0, 0);
     LLVMValueRef main_function = LLVMAddFunction(qir.module, "main", main_type);
+    current_function = main_function;
     
     // measure function
     measure_type = LLVMFunctionType(void_type, two_param, 2, 0);
@@ -543,5 +714,6 @@ FILE *generate_QIR(ast *root){
     LLVMDisposeBuilder(qir.builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);
+    check_errors();
     return output;
 }   

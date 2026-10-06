@@ -65,7 +65,6 @@ token* check_token(char chr, token* current_token){
         
         // \n and ; are recongised as line breaks and are also collapsed into one token if consecutive
         case '\n':
-            current_line++;
             if(current_token->type != END_OF_LINE){
                 current_token = create_token(current_token);
                 if(!current_token){
@@ -75,14 +74,16 @@ token* check_token(char chr, token* current_token){
                 }
                 current_token->line = current_line;
                 current_token->type = END_OF_LINE;
-                current_token->value = malloc(sizeof(char));
+                current_token->value = malloc(sizeof(char)*2);
                 if(!current_token->value){
                     d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                     add_error_entry(d);
                     return NULL;
                 }
                 *(current_token->value) = ';';
+                current_token->value[1] = '\0';
             }
+            current_line++;
             break;
         case ';':
             if(current_token->type != END_OF_LINE){
@@ -94,13 +95,14 @@ token* check_token(char chr, token* current_token){
                 }
                 current_token->line = current_line;
                 current_token->type = END_OF_LINE;
-                current_token->value = malloc(sizeof(char));
+                current_token->value = malloc(sizeof(char)*2);
                 if(!current_token->value){
                     d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                     add_error_entry(d);
                     return NULL;
                 }
                 *(current_token->value) = ';';
+                current_token->value[1] = '\0';
             }
             break;
         
@@ -134,13 +136,14 @@ token* check_token(char chr, token* current_token){
             }
             current_token->line = current_line;
             current_token->type = DELIMITER;
-            current_token->value = malloc(sizeof(char));
+            current_token->value = malloc(sizeof(char)*2);
             if(!current_token->value){
                 d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                 add_error_entry(d);
                 return NULL;
             }
             *(current_token->value) = chr;
+            current_token->value[1] = '\0';
             break;
         
         // for now we just differentiate between open and close brackets
@@ -155,13 +158,14 @@ token* check_token(char chr, token* current_token){
             }
             current_token->line = current_line;
             current_token->type = BRACKET_OPEN;
-            current_token->value = malloc(sizeof(char));
+            current_token->value = malloc(sizeof(char)*2);
             if(!current_token->value){
                 d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                 add_error_entry(d);
                 return NULL;
             }
             *(current_token->value) = chr;
+            current_token->value[1] = '\0';
             break;
 
         case ')':
@@ -175,13 +179,14 @@ token* check_token(char chr, token* current_token){
             }
             current_token->line = current_line;
             current_token->type = BRACKET_CLOSE;
-            current_token->value = malloc(sizeof(char));
+            current_token->value = malloc(sizeof(char)*2);
             if(!current_token->value){
                 d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                 add_error_entry(d);
                 return NULL;
             }
             *(current_token->value) = chr;
+            current_token->value[1] = '\0';
             break;
         
         // comments are done with a # but I consider also allowing C style comments
@@ -195,13 +200,14 @@ token* check_token(char chr, token* current_token){
             }
             current_token->line = current_line;
             current_token->type = COMMENT;
-            current_token->value = malloc(sizeof(char));
+            current_token->value = malloc(sizeof(char)*2);
             if(!current_token->value){
                 d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                 add_error_entry(d);
                 return NULL;
                 }
             *(current_token->value) = chr;
+            current_token->value[1] = '\0';
             break;
         
         // these operators are mathematical, logical and other
@@ -231,13 +237,14 @@ token* check_token(char chr, token* current_token){
             }
             current_token->line = current_line;
             current_token->type = OPERATOR;
-            current_token->value = malloc(sizeof(char));
+            current_token->value = malloc(sizeof(char)*2);
             if(!current_token->value){
                 d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                 add_error_entry(d);
                 return NULL;
             }
             *(current_token->value) = chr;
+            current_token->value[1] = '\0';
             break;
         
         // currently only letters and _ can be used for variable names and definitions, this could change in the future
@@ -257,8 +264,8 @@ token* check_token(char chr, token* current_token){
                         return NULL;
                     }
                 }
-                *(current_token->value+len) = chr;
-                *(current_token->value+len+1) = '\0';
+                current_token->value[len] = chr;
+                current_token->value[len+1] = '\0';
             } else {
                 space = 0;
                 current_token = create_token(current_token);
@@ -276,7 +283,7 @@ token* check_token(char chr, token* current_token){
                     return NULL;
                 }
                 *(current_token->value) = chr;
-                *(current_token->value+1) = '\0';
+                current_token->value[1] = '\0';
             }
             break;
         
@@ -293,8 +300,8 @@ token* check_token(char chr, token* current_token){
                         return NULL;
                     }
                 }
-                *(current_token->value+len) = chr;
-                *(current_token->value+len+1) = '\0';
+                current_token->value[len] = chr;
+                current_token->value[len+1] = '\0';
             } else {
                 space = 0;
                 current_token = create_token(current_token);
@@ -312,7 +319,7 @@ token* check_token(char chr, token* current_token){
                     return NULL;
                 }
                 *(current_token->value) = chr;
-                *(current_token->value+1) = '\0';
+                current_token->value[1] = '\0';
             }
             break;
         
@@ -327,13 +334,14 @@ token* check_token(char chr, token* current_token){
                 }
                 current_token->line = current_line;
                 current_token->type = UNKOWN;
-                current_token->value = malloc(sizeof(char));
+                current_token->value = malloc(sizeof(char)*2);
                 if(!current_token->value){
                     d = (diagnose){.line = current_token->line, .message = "Failed to allocate memory for new token", .type = FATAL};
                     add_error_entry(d);
                     return NULL;
                 }
                 *(current_token->value) = chr;
+                current_token->value[1] = '\0';
                 char *message = malloc(64);
                 sprintf(message, "unable to recognize character %c,%i\n", chr, chr);
                 d = (diagnose){.line = -1, .message = message, .type = WARNING};
@@ -371,13 +379,6 @@ token* get_token(char* buffer){
     first_token->next_token = NULL;
     first_token->value = NULL;
     first_token->line = -1;
-    
-    // checking if the string contains \0 to mark the end. We don't have a length so we do not know, if this is the intended end of string.
-    if(!strchr(buffer, '\0')){
-        d = (diagnose){.line = -1, .message = "Buffer is not \0 terminated", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
 
     token *current_token = first_token;
     char chr = *buffer;

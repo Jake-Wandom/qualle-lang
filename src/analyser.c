@@ -9,7 +9,6 @@
 #include <stdbool.h>
 
 bool print = 0;
-bool adaptive = 0;
 
 int count_nodes(ast *root){
     if(root == NULL) return 0;
@@ -266,6 +265,8 @@ int walk_ast(ast *node, variable *variable_list, size_t size){
         case ASSIGN:
             res = analyse_left(node->left, variable_list, size);
             if(res == -1) return -1;
+
+            node->right->resolved_type = node->left->resolved_type;
 
             char *value = analyse_right(node->right, variable_list, size);
             size_t value_size = strlen(value)+1;

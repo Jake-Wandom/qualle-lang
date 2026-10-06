@@ -78,7 +78,13 @@ void print_ast(ast *root, int level){
             printf("├── IF: \n");
             break;
         case LOOP:
-            printf("├── LOOP: \n");
+            if(*(root->value) == 'f'){
+                printf("├── FOR LOOP: \n");
+            } else if(*(root->value) == 'w'){
+                printf("├── WHILE LOOP: \n");
+            } else {
+                printf("├── LOOP: \n");
+            }
             break;
         case INCLUDE:
             printf("├── INCLUDE: '%s'\n", root->value);
@@ -251,18 +257,14 @@ void free_ast(ast *root){
             free(root->name);
             free_ast(root->left);
             break;
-        case NAME:
-        case IDENTIFIER:
-        case INCLUDE:
-        case MEASURE:
-            free(root->name);
-            break;
-        case VALUE:
-            free(root->value);
-            break;
         case BINOP:
         case ASSIGN:
+        case LOOP:
             free(root->value);
+            free_ast(root->left);
+            free_ast(root->right);
+            break;
+        case CONDITIONAL:
             free_ast(root->left);
             free_ast(root->right);
             break;
@@ -272,6 +274,7 @@ void free_ast(ast *root){
             free_ast(root->right);
             break;
         default:
+            free(root->name);
             break;
     }
     ast *next = root->branch;
