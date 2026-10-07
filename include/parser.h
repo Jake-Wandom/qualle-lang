@@ -11,24 +11,12 @@
 enum variable_type {
     VAR_QUBIT,
     VAR_BIT,
-    VAR_VECTOR,
     VAR_INTEGER,
-    VAR_NATURAL,
+    VAR_UINTEGER,
     VAR_DOUBLE,
-    VAR_VOID
+    VAR_VOID,
+    VAR_UNKOWN
 };
-
-enum error_type {
-    UNEXPECTED_ERROR,
-    WRONG_TYPE_ERROR,
-    UNKOWN_SYMBOL_ERROR,
-    NO_CONTEXT_ERROR,
-    UNKOWN_TYPE_ERROR,
-    NAME_CONFLICT_ERROR,
-    MISSING_ERROR,
-    FORBIDDEN_ERROR
-};
-
 
 // enum for keywords
 enum ast_type {
@@ -40,10 +28,12 @@ enum ast_type {
     ASSIGN,
     BINOP,
     BOOLOP,
+    UNOP,
     FUNCTION,
     CALL,
     CONDITIONAL,
-    LOOP,
+    FOR_LOOP,
+    WHILE_LOOP,
     MEASURE,
     INCLUDE,
     RETURN
@@ -52,23 +42,20 @@ enum ast_type {
 
 // struct for the abstract syntax tree
 // tbh this implementation is more like a linked list with extra steps
-typedef struct abstract_syntax_tree {
+typedef struct abstract_syntax_tree{
     enum ast_type type;
 
-    // pointer to the next branch
+    // pointer to the next branches
     struct abstract_syntax_tree *branch;
-    // line of the first token that was parsed to this node
-    int line;
 
-    // left and right subbranch for functions and operations
     struct abstract_syntax_tree *left;
     struct abstract_syntax_tree *right;
+    struct abstract_syntax_tree *other;
+    
+    char *value;
 
-    // union that contains possible variables for different node types
-    union {
-        char *name;
-        char *value;
-    };
+    // line of the first token that was parsed to this node
+    int line;
 
     // This is for the analyser to fill in
     enum variable_type resolved_type;
@@ -77,9 +64,21 @@ typedef struct abstract_syntax_tree {
     
 } ast;
 
+// struct for determining the operation
+typedef struct {
+    const char *value;
+    int prec;
+    bool right_assoc;
+    int num_tokens;
+} op_info;
 
+
+ast* parse_statement(void);
+ast* parse_body(bool *ok);
+ast* parse_expression(int min_prec);
+ast* parse_primary(void);
+ast* parse_unary(void);
 // returns the root to the generated abstract syntax tree of the given token list
-ast* parse_start(ast *current_node);
 ast* generate_ast(token *first_token);
 
 #endif

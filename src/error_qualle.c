@@ -68,7 +68,13 @@ void check_errors(){
     }
 }
 
-void add_error_entry(diagnose d){
+void add_error_entry(severity type, int line, char *message){
+    if(errors.size >= 64){
+        fprintf(stderr, "ABORTING DUE TO TOO MANY ERRRORS\n");
+        print_errors();
+        exit(1);
+    }
+    diagnose d = {.type = type, .line = line, .message = message};
     switch(d.type){
         case WARNING:
             errors.warning_count += 1;

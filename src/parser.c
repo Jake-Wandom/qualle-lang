@@ -8,36 +8,29 @@
 
 // global variables that track the current token and last linebreak
 static token *current_token;
-static ast *last_eol;
 
 // flags that mark, if we are in a certain program state
 bool adaptive = 0;
-
-static bool in_parameters;
-static bool in_body;
-static bool in_assign;
-static bool in_loop;
-static bool in_if;
 
 
 /*
 creates a new node with all pointer values set to NULL
 contrary to create_token, this function does not automatically append
 */
-ast* create_node(void){
+ast* create_node(enum ast_type type, int line, char *value){
     ast *new_node = calloc(1, sizeof(ast));
     if(!new_node){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for new node", .type = FATAL};
-        add_error_entry(d);
+        add_error_entry(FATAL, -1, "Failed to allocate memory for new node");
         return NULL;
     }
-    new_node->type = ROOT;
+    new_node->type = type;
     new_node->branch = NULL;
     new_node->left = NULL;
     new_node->right = NULL;
-    new_node->name = NULL;
+    new_node->other = NULL;
+    new_node->value = strdup(value);
     new_node->llvm =  NULL;
-    new_node->line = current_token->line;
+    new_node->line = line;
 
     return new_node;
 }
@@ -50,10 +43,9 @@ If the token is END, we return it
 void switch_token(int num){
     for(int i = 0; i < num; i++){
         if(!current_token){
-            diagnose d = {.line = -1, .message = "NULL pointer while token switch", .type = FATAL};
-            add_error_entry(d);
+            add_error_entry(FATAL, -1, "Null pointer while token switch");
         }
-        if(current_token->type == END){
+        if(current_token->type == T_END){
             return;
         }
         current_token = current_token->next_token;
@@ -61,1043 +53,567 @@ void switch_token(int num){
 }
 
 /*
-This rather complicated function ensures the correct syntax for a function
-The parameters and body are parsed recursively, since closed brackets are a terminator for parse_start
 */
-ast* parse_function(ast *current_node){
-    ast *new_node = create_node();
-    new_node->type = FUNCTION;
-    current_node->branch = new_node;
-
-    switch_token(1);
-
-    if(current_token->type != INDICATOR){
-        diagnose d = {.line = current_token->line, .message = "Expected function name", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
+token* look_forward(int num){
+    token *token = current_token;
+    for(int i = 0; i < num && token->type != T_END; i++){
+        token = token->next_token;
     }
-
-    // store function name any double definitions are handled later
-    size_t size = strlen(current_token->value)+1;
-    new_node->name = calloc(1, size);
-    if(!new_node->name){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    strncpy(new_node->name, current_token->value, size);
-
-
-    switch_token(1);
-
-    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '(')){
-        diagnose d = {.line = current_token->line, .message = "Expected '(' in function definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    // create subtree with all variables
-    ast *temp_node = create_node();
-    
-    in_parameters = 1;
-    parse_start(temp_node);
-    in_parameters = 0;
-    
-    new_node->left = temp_node->branch;
-
-    // we need to forward to the end of the function definition
-    while(current_token != NULL){
-        if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == ')')){
-            break;
-        }
-        switch_token(1);
-    }   
-
-    if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != ')')){
-        diagnose d = {.line = current_token->line, .message = "Expected ')' in function definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
-        diagnose d = {.line = current_token->line, .message = "Expected '{' in function definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    temp_node->branch = NULL;
-    temp_node->value = NULL;
-    
-    in_body = 1;
-    parse_start(temp_node);
-    in_body = 0;
-    
-    new_node->right = temp_node->branch;
-    free(temp_node);
-
-    // we need to forward to the end of the function body
-    while(current_token != NULL){
-        if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == '}')){
-            break;
-        }
-        switch_token(1);
-    }   
-
-    if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
-        diagnose d = {.line = current_token->line, .message = "Expected '}' in function definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-    return parse_start(new_node);
+    return token;
 }
 
 /*
-This function parses both for and while loops
-The loop body is parsed in the right branch and the condition is parsed in the left branch
+Matches the token to a token type and word
+Both the type and word have to be correct
 */
-ast* parse_loop(ast *current_node){
-    ast *new_node = create_node();
-    new_node->type = LOOP;
-    new_node->value = malloc(1);
-    current_node->branch = new_node;
-
-    if(strcmp(current_token->value, "for") == 0){
-        *(new_node->value) = 'f';
-    } else if(strcmp(current_token->value, "while") == 0){
-        *(new_node->value) = 'w';
+bool match(token *token, enum token_type type, char *word){
+    if(!word) return 0;
+    if(!token->value) return 0;
+    
+    int res = strcmp(token->value, word);
+    if((res == 0) && (token->type == type)){
+        return 1;
     } else {
-        diagnose d = {.line = current_token->line, .message = "Loop name has to be for or while", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
+        return 0;
     }
-
-    switch_token(1);
-
-    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '(')){
-        diagnose d = {.line = current_token->line, .message = "Expected '(' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    // create subtree with boolean logic
-    ast *temp_node = create_node();
-    
-    // we use last_eol as an anchor for tree logic
-    last_eol = temp_node;
-    in_loop = 1;
-    parse_start(temp_node);
-    in_loop = 0;
-    
-    new_node->left = temp_node->branch;
-
-    // we need to forward to the end of the conditional definition
-    while(current_token != NULL){
-        if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == ')')){
-            break;
-        }
-        switch_token(1);
-    }   
-
-    if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != ')')){
-        diagnose d = {.line = current_token->line, .message = "Expected ')' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
-        diagnose d = {.line = current_token->line, .message = "Expected '{' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    temp_node->branch = NULL;
-    temp_node->value = NULL;
-    
-    in_body = 1;
-    parse_start(temp_node);
-    in_body = 0;
-    
-    new_node->right = temp_node->branch;
-    free(temp_node);
-
-    // we need to forward to the end of the conditional body
-    while(current_token != NULL){
-        if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == '}')){
-            break;
-        }
-        switch_token(1);
-    }   
-
-    if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
-        diagnose d = {.line = current_token->line, .message = "Expected '}' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-    return parse_start(new_node);
 }
 
 /*
-This function parses an if conditional
-The if body is parsed in the right branch and the condition is parsed in the left branch
+If the current token is a match, it switches token and returns
 */
-ast* parse_if(ast *current_node){
-    ast *new_node = create_node();
-    new_node->type = CONDITIONAL;
-    new_node->value = malloc(1);
-    *(new_node->value) = 'i';
-    current_node->branch = new_node;
-
+bool accept(enum token_type type, char *word){
+    if(!match(current_token, type, word)) return 0;
     switch_token(1);
+    return 1;
+}
 
-    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '(')){
-        diagnose d = {.line = current_token->line, .message = "Expected '(' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
+/*
+Special case of accept, where we throw an error message if it is false
+*/
+bool expect(enum token_type type, char *word){
+    if(accept(type, word)) return 1;
+    char message[64];
+    snprintf(message, 64, "Expected %s", word);
+    add_error_entry(ERROR, current_token->line, message);
+    return 0;
+}
 
-    switch_token(1);
-
-    // create subtree with boolean logic
-    ast *temp_node = create_node();
-    
-    // we use last_eol as an anchor for tree logic
-    last_eol = temp_node;
-    in_if = 1;
-    parse_start(temp_node);
-    in_if = 0;
-    
-    new_node->left = temp_node->branch;
-
-    // we need to forward to the end of the conditional definition
-    while(current_token != NULL){
-        if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == ')')){
-            break;
-        }
+/*
+Function that gets called after every statement parsing function
+It Checks the termination conditions for a statement
+*/
+bool end_statement(void){
+    if(current_token->type == T_END_OF_LINE){
         switch_token(1);
-    }   
-
-    if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != ')')){
-        diagnose d = {.line = current_token->line, .message = "Expected ')' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
+        return 1;
     }
-
-    switch_token(1);
-
-    if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
-        diagnose d = {.line = current_token->line, .message = "Expected '{' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
+    if(current_token->type == T_END || match(current_token, T_BRACKET_CLOSE, "}") || match(current_token, T_BRACKET_CLOSE, ")")){
+        return 1;
     }
+    add_error_entry(ERROR, current_token->line, "Expected end of line after statement");
+    return 0;
+}
 
-    switch_token(1);
+bool determine_binop(op_info *op){
+    if(current_token->type != T_OPERATOR) return 0;
+    char op1 = current_token->value[0];
+    char op2 = (look_forward(1)->type == T_OPERATOR) ? look_forward(1)->value[0] : 0;
 
-    temp_node->branch = NULL;
-    temp_node->value = NULL;
-    
-    in_body = 1;
-    parse_start(temp_node);
-    in_body = 0;
-    
-    new_node->right = temp_node->branch;
-
-    // we need to forward to the end of the conditional body
-    while(current_token != NULL){
-        if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == '}')){
-            break;
-        }
-        switch_token(1);
-    }   
-
-    if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
-        diagnose d = {.line = current_token->line, .message = "Expected '}' in conditional definition", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    if((current_token->type == INDICATOR) && (strcmp(current_token->value, "else"))){
-        *(new_node->value) = 'e';
-        ast *else_node = create_node();
-        else_node->type = CONDITIONAL;
-        else_node->left = new_node->right;
-        new_node->right = else_node;
-
-        switch_token(1);
-
-        if((current_token->type != BRACKET_OPEN) || (*(current_token->value) != '{')){
-            diagnose d = {.line = current_token->line, .message = "Expected '{' in else definition", .type = ERROR};
-            add_error_entry(d);
-            return NULL;
-        }
-
-        switch_token(1);
-
-        temp_node->branch = NULL;
-        temp_node->value = NULL;
-        
-        in_body = 1;
-        parse_start(temp_node);
-        in_body = 0;
-        
-        else_node->right = temp_node->branch;
-        free(temp_node);
-
-        // we need to forward to the end of the conditional body
-        while(current_token != NULL){
-            if((current_token->type == BRACKET_CLOSE) && (*(current_token->value) == '}')){
-                break;
+    switch(op1){
+        case '+':
+            *op = (op_info){"+", 5, 0, 1};
+            return 1;
+        case '-':
+            *op = (op_info){"-", 5, 0, 1};
+            return 1;
+        case '*':
+            *op = (op_info){"*", 6, 0, 1};
+            return 1;
+        case '/':
+            *op = (op_info){"/", 6, 0, 1};
+            return 1;
+        case '%':
+            *op = (op_info){"%", 6, 0, 1};
+            return 1;
+        case '^':
+            *op = (op_info){"^", 7, 1, 1};
+            return 1;
+        case '<':
+            *op = (op2 == '=') ? (op_info){"<=", 4, 0, 2} : (op_info){"<", 4, 0, 1};
+            return 1;
+        case '>':
+            *op = (op2 == '=') ? (op_info){">=", 4, 0, 2} : (op_info){">", 4, 0, 1};
+            return 1;
+        case '=':
+            if(op2 == '='){
+                *op = (op_info){"==", 3, 0, 2};
+                return 1;
             }
-            switch_token(1);
-        }   
-
-        if((current_token->type != BRACKET_CLOSE) || (*(current_token->value) != '}')){
-            diagnose d = {.line = current_token->line, .message = "Expected '}' in else definition", .type = ERROR};
-            add_error_entry(d);
-            return NULL;
-        }
-
-        switch_token(1);
+            return 0;
+        case '&':
+            if(op2 == '&'){
+                *op = (op_info){"&&", 2, 0, 2};
+                return 1;
+            }
+            return 0;
+        case '|':
+            if(op2 == '|'){
+                *op = (op_info){"||", 1, 0, 2};
+                return 1;
+            }
+            return 0;
+        case '!':
+            if(op2 == '='){
+                *op = (op_info){"!=", 3, 0, 2};
+                return 1;
+            }
+            return 0;
     }
-    free(temp_node);
-    return parse_start(new_node);
+
+    return 0;
 }
 
-/*
-this function parses an include and makes sure, that it has a proper file name
-atm includes do not work at the lower levels but they get parsed for now
-*/
-ast* parse_include(ast *current_node){
-    switch_token(1);
-
-    if(current_token->type != INDICATOR){
-        diagnose d = {.line = current_token->line, .message = "include doesn't link to a file", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-    ast *new_node = create_node();
-    new_node->type = INCLUDE;
-    current_node->branch = new_node;
-    
-    size_t size = strlen(current_token->value)+1;
-    new_node->value = calloc(1, size);
-    if(!new_node->value){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    strncpy(new_node->value, current_token->value, size);
-    
-    switch_token(1);
-
-    if(current_token->type != DELIMITER){
-        diagnose d = {.line = current_token->line, .message = "include doesn't link to a file", .type = ERROR};
-        add_error_entry(d);
-         return NULL;
-    }
-    
-    switch_token(1);
-
-    if((current_token->type != INDICATOR) || (strcmp(current_token->value, "ql") != 0)){
-        diagnose d = {.line = current_token->line, .message = "include doesn't link to a .ql file", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    switch_token(1);
-
-    if(current_token->type != END_OF_LINE){
-        diagnose d = {.line = current_token->line, .message = "No linebreak after include", .type = WARNING};
-        add_error_entry(d);
-    }
-    return parse_start(new_node);
-}
-
-/*
-this function determines if the given indicator token is a type
-if it is a type, it checks if it is part of a variable declaration and handles that
-*/
-ast* parse_type(ast *current_node){
+enum variable_type check_type(char *name){
     enum variable_type type;
 
-    if(current_token->type != INDICATOR){
-        diagnose d = {.line = current_token->line, .message = "Variable type has to be an identifier", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    if(strcmp(current_token->value, "qubit") == 0){
+    if(strcmp(name, "qubit") == 0){
         type = VAR_QUBIT;
-    } else if(strcmp(current_token->value, "bit") == 0){
+    } else if(strcmp(name, "bit") == 0){
         type = VAR_BIT;
-    } else if(strcmp(current_token->value, "int") == 0){
+    } else if(strcmp(name, "int") == 0){
         type = VAR_INTEGER;
-    } else if(strcmp(current_token->value, "uint") == 0){
-        type = VAR_NATURAL;
-    } else if(strcmp(current_token->value, "double") == 0){
+    } else if(strcmp(name, "uint") == 0){
+        type = VAR_UINTEGER;
+    } else if(strcmp(name, "double") == 0){
         type = VAR_DOUBLE;
-    } else if(strcmp(current_token->value, "vector") == 0){
-        type = VAR_VECTOR;
-    } else if(strcmp(current_token->value, "void") == 0){
+    } else if(strcmp(name, "void") == 0){
         type = VAR_VOID;
     } else {
-        return NULL;
+        type = VAR_UNKOWN;
     }
-    
-    switch_token(1);
-    
-    if(current_token->type != INDICATOR) {
-        ast *new_node = create_node();
-        new_node->type = TYPE;
+
+    return type;
+}
+
+ast* parse_primary(void){
+    token *token = current_token;
+
+    if(token->type == T_NUMBER){
+        enum variable_type type = VAR_INTEGER;
+        if(strchr(token->value, '.') != NULL){
+            type = VAR_DOUBLE;
+        }
+
+        ast *new_node = create_node(VALUE, token->line, token->value);
+        if(!new_node) return NULL;
         new_node->resolved_type = type;
-        current_node->branch = new_node;
-        return parse_start(new_node);
-    } else {
-    // we assume this is a variable declaration
-        ast *name_node = create_node();
-        name_node->type = NAME;
-        name_node->resolved_type = type;
-
-        size_t size = strlen(current_token->value)+1;
-        name_node->name = calloc(1, size);
-        if(!name_node->name){
-            diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
-            add_error_entry(d);
-            return NULL;
-        }
-        strncpy(name_node->name, current_token->value, size);
-
-        current_node->branch = name_node;
-        switch_token(1);
-
-        return parse_start(name_node);
-    }
-}
-
-/*
-this function parses the left and right side of an assign and rearranges the ast
-the right branch is parsed recursively and the left branch is extracted from last_eol
-*/
-ast *parse_assign(ast *current_node){
-    if(last_eol == NULL){
-        diagnose d = {.line = current_token->line, .message = "Cannot parse assign", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    } else if(in_assign){
-        diagnose d = {.line = current_token->line, .message = "Cannot call assign in another assign", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    // we use last_eol as an anchor point to append our new node and use the old nodes as left branch
-    ast *left = last_eol->branch;
-    ast *temp_node = create_node();
-
-    ast *new_node = create_node();
-    new_node->type = ASSIGN;
-    new_node->value = malloc(1);
-    if(!new_node->value){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    *(new_node->value) = *(current_token->value);
-    new_node->left = left;
-    new_node->right = temp_node;
-
-    last_eol->branch = new_node;
-    last_eol = new_node;
-    
-    switch_token(1);
-    
-    in_assign = 1;
-    parse_start(temp_node);
-    in_assign = 0;
-    
-    new_node->right = temp_node->branch;
-    free(temp_node);
-
-    return parse_start(new_node);
-}
-
-/*
-this parses binary operations these are only supported in the adaptive profile
-*/
-ast* parse_binop(ast *current_node){
-    // binary operations are only supported in adaptive profile and in assigns.
-    if(!adaptive){
-        diagnose d = {.line = current_token->line, .message = "Binary operations are only supported in the adaptive profile", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    if(!in_assign){
-        diagnose d = {.line = current_token->line, .message = "Operation outside of an assign are not supported", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-    if(last_eol == NULL){
-        diagnose d = {.line = current_token->line, .message = "Cannot parse operation", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    // we use last_eol as an anchor point to append our new node and use the old nodes as left branch
-    // since we are in an assign we assume last_eol points to the last operation node.
-    ast *left = last_eol->right->branch;
-    ast *temp_node = create_node();
-
-    ast *new_node = create_node();
-    new_node->type = BINOP;
-    new_node->value = malloc(1);
-    if(!new_node->value){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    *(new_node->value) = *(current_token->value);
-    new_node->left = left;
-    new_node->right = temp_node;
-
-    last_eol->right->branch = new_node;
-    last_eol = new_node;
-    
-    switch_token(1);
-    
-    parse_start(temp_node);
-    
-    new_node->right = temp_node->branch;
-    free(temp_node);
-
-    return parse_start(new_node);
-}
-
-/*
-this function parses a boolean operation
-*/
-ast* parse_boolop(ast *current_node){
-    if(!adaptive){
-        diagnose d = {.line = current_token->line, .message = "Boolean operations are only supported in the adaptive profile", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    if(!in_if && !in_loop){
-        diagnose d = {.line = current_token->line, .message = "Boolean operations are not supported in this context", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-    if(last_eol == NULL){
-        diagnose d = {.line = current_token->line, .message = "Cannot parse operation", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-    
-    /*
-    if(*(current_token->value) == '!'){
-        ast *new_node = create_node();
-        new_node->type = BOOLOP;
-        new_node->value = malloc(1);
-        current_node->branch = new_node;
-        if(!new_node->value){
-            diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-            add_error_entry(d);
-            return NULL;
-        }
-        *(new_node->value) = *(current_token->value);
         
         switch_token(1);
-        if((current_token->type != INDICATOR) || (current_token->value == NULL)){
-            diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-            add_error_entry(d);
-            return NULL;
-        }
-        return parse_start(new_node);
+        return new_node;
     }
-    */
+    if(token->type == T_IDENTIFIER){
+        ast *new_node = create_node(IDENTIFIER, token->line, token->value);
+        if(!new_node) return NULL;
 
-    // we use last_eol as an anchor point to append our new node and use the old nodes as left branch
-    // since we are in an if conditional we assume last_eol points to the last operation node.
-    
-    ast *left;
-    if(last_eol->type == ROOT){
-        // The parse_if node
-        if(last_eol->branch == NULL){
-            diagnose d = {.line = current_token->line, .message = "Unforseen behaviour while parsign boolop", .type = INTERNAL};
-            add_error_entry(d);
+        switch_token(1);
+        return new_node;
+    }
+    if(match(token, T_BRACKET_OPEN, "(")){
+        switch_token(1);
+        ast *inner = parse_expression(0);
+        if(!inner || !expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+        return inner;
+    }
+
+    add_error_entry(ERROR, token->line, "Expected value or variable");
+    return NULL;
+}
+
+ast* parse_unary(void){
+    token *token = current_token;
+    if(match(token, T_OPERATOR, "-") || match(token, T_OPERATOR, "!")){
+        switch_token(1);
+        ast *operand = parse_unary();
+        if(!operand) return NULL;
+
+        ast *new_node = create_node(UNOP, token->line, token->value);
+        if(!new_node) return NULL;
+        new_node->left = operand;
+
+        return new_node;
+    }
+
+    return parse_primary();
+}
+
+ast* parse_expression(int min_prec){
+    ast *left = parse_unary();
+    if(!left) return NULL;
+
+    op_info op;
+    while(determine_binop(&op) && op.prec >= min_prec){
+        int line = current_token->line;
+        switch_token(op.num_tokens);
+
+        ast *right = parse_expression(op.right_assoc ? op.prec : op.prec + 1);
+        if(!right) return NULL;
+
+        ast *new_node = create_node(op.prec <= 4 ? BOOLOP : BINOP, line, op.value);
+        new_node->left = left;
+        new_node->right = right;
+        left = new_node;
+    }
+
+    return left;
+}
+
+ast* parse_body(bool *ok){
+    ast *body_root = create_node(ROOT, current_token->line, "");
+    ast *current_node = body_root;
+    token *last_token;
+    *ok = 1;
+
+    while(!match(current_token, T_BRACKET_CLOSE, "}")){
+        while(current_token->type == T_END_OF_LINE || current_token->type == T_COMMENT || current_token->type == T_START) switch_token(1);
+        if(match(current_token, T_BRACKET_CLOSE, "}")) break;
+        if(current_token->type == T_END){
+            add_error_entry(ERROR, current_token->line, "Missing '}'");
             return NULL;
         }
-        left = last_eol->branch;
-    } else if(last_eol->type == BOOLOP){
-        left = last_eol->right->branch;
+
+        last_token = current_token;
+
+        ast *node = parse_statement();
+        if(!node) return NULL;
+
+        current_node->branch = node;
+        current_node = current_node->branch;
+
+        if(last_token == current_token){
+            add_error_entry(INTERNAL, current_token->line, "Infinite loop detected");
+            switch_token(1);
+        }
+    }
+    current_node = body_root->branch;
+    free(body_root);
+    if(!current_node){
+        *ok = 0;
+    }
+    return current_node;
+}
+
+ast* parse_function(void){
+    switch_token(1);
+    ast *new_node;
+
+    if(current_token->type != T_IDENTIFIER){
+        add_error_entry(ERROR, current_token->line, "Missing function name");
+        new_node = create_node(FUNCTION, current_token->line, "missing_name");
+    } else { 
+        new_node = create_node(FUNCTION, current_token->line, current_token->value);
+    }
+    switch_token(1);
+
+    if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+    ast **tail = &new_node->left;
+    if(!match(current_token, T_BRACKET_CLOSE, ")")){
+        do {
+            if(check_type(current_token->value) != VAR_UNKOWN && look_forward(1)->type == T_IDENTIFIER){
+                ast *name = create_node(NAME, current_token->line, look_forward(1)->value);
+                if(!name) return NULL;
+                name->resolved_type = check_type(current_token->value);
+
+                *tail = name;
+                tail = &name->branch;
+
+                switch_token(2);
+            } else {
+                add_error_entry(ERROR, current_token->line, "Expected parameter form 'type' 'name'");
+                return NULL;
+            }
+        } while(accept(T_DELIMITER, ","));
+    }
+    if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+    if(!expect(T_BRACKET_OPEN, "{")) return NULL;
+
+    bool ok;
+    ast *subtree = parse_body(&ok);
+    if(!subtree || !ok) return NULL;
+    new_node->right = subtree;
+
+    if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
+
+    return end_statement() ? new_node : NULL;
+}
+
+ast* parse_loop(bool for_loop){
+    ast *new_node;
+    ast *latch;
+    if(for_loop){
+        new_node = create_node(FOR_LOOP, current_token->line, "for");
+        switch_token(1);
+
+        if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+        ast *init = parse_statement();
+        if(!init) return NULL;
+        new_node->left = init;
+
+        ast *condition = parse_expression(0);
+        if(!condition) return NULL;
+        new_node->other = condition;
+
+        if(!expect(T_END_OF_LINE, ";")) return NULL;
+
+        latch = parse_statement();
+        if(!latch) return NULL;
+
     } else {
-        diagnose d = {.line = current_token->line, .message = "Boolean operation unrecognised in this context", .type = WARNING};
-        add_error_entry(d);
-        left = last_eol->branch;
-    }
-    ast *temp_node = create_node();
+        new_node = create_node(WHILE_LOOP, current_token->line, "while");
+        switch_token(1);
 
-    ast *new_node = create_node();
-    new_node->type = BOOLOP;
-    new_node->value = malloc(1);
-    if(!new_node->value){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-        add_error_entry(d);
+        if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+        ast *condition = parse_expression(0);
+        if(!condition) return NULL;
+        new_node->left = condition;
+
+    }
+    if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+    if(!expect(T_BRACKET_OPEN, "{")) return NULL;
+
+    bool ok;
+    ast *subtree = parse_body(&ok);
+    if(!subtree || !ok) return NULL;
+    new_node->right = subtree;
+
+    // append latch at the end of subtree
+    if(for_loop){
+        while(subtree->branch != NULL) subtree = subtree->branch;
+        subtree->branch = latch;
+    }
+
+    if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
+
+    return end_statement() ? new_node : NULL;
+}
+
+ast* parse_conditional(void){
+    ast *new_node = create_node(CONDITIONAL, current_token->line, "if");
+    switch_token(1);
+
+    if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+    ast *condition = parse_expression(0);
+    if(!condition) return NULL;
+    new_node->left = condition;
+
+    if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+    if(!expect(T_BRACKET_OPEN, "{")) return NULL;
+
+    bool ok;
+    ast *if_body = parse_body(&ok);
+    if(!if_body || !ok) return NULL;
+    new_node->right = if_body;
+
+    if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
+
+    if(current_token->type == T_END_OF_LINE && match(look_forward(1), T_IDENTIFIER, "else")) switch_token(1);
+
+    if(accept(T_IDENTIFIER, "else")){
+        if(!expect(T_BRACKET_OPEN, "{")) return NULL;
+
+        ast *else_body = parse_body(&ok);
+        if(!else_body || !ok) return NULL;
+        new_node->other = else_body;
+
+        if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
+    }
+    return end_statement() ? new_node : NULL;
+}
+
+ast* parse_measure(void){
+    switch_token(1);
+    if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+    if(current_token->type != T_IDENTIFIER){
+        add_error_entry(ERROR, current_token->line, "Expected Identifer as measure argument");
         return NULL;
     }
-    *(new_node->value) = *(current_token->value);
-    new_node->left = left;
-    new_node->right = temp_node;
 
-    if(last_eol->type == ROOT){
-        last_eol->branch = new_node;
-    } else if(last_eol->type == BOOLOP){
-        last_eol->right->branch = new_node;
-    }
-
-    last_eol = new_node;
-    
+    ast *new_node = create_node(MEASURE, current_token->line, current_token->value);
+    if(!new_node) return NULL;
     switch_token(1);
-    
-    parse_start(temp_node);
-    
-    new_node->right = temp_node->branch;
-    free(temp_node);
-    
-    return parse_start(new_node);
+
+    if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+    return end_statement() ? new_node : NULL;
 }
 
-/*
-this parses operators, these can be operations as well as assigns
-*/
-ast* parse_operator(ast *current_node){
-    diagnose d;
-    switch(*(current_token->value)){
-        case '=':
-            if(current_token->next_token->type == OPERATOR){
-                if(*(current_token->next_token->value) == *(current_token->value)){    
-                    return parse_boolop(current_node);
-                } else {
-                    d = (diagnose){.line = current_token->next_token->line, .message = "Two different operators are not supported back to back", .type = ERROR};
-                    add_error_entry(d);
-                    return NULL;
-                }
-            }
-            return parse_assign(current_node);
-        case '+':
-        case '-':
-        case '*':
-        case '/':
-        case '^':
-        case '%':
-            return parse_binop(current_node);
-        case '|':
-        case '&':
-        case '<':
-        case '>':
-        case '!':
-            return parse_boolop(current_node);
-        default:
-            d = (diagnose){.line = current_token->line, .message = "This operation is currently not supported", .type = ERROR};
-            add_error_entry(d);
-            return NULL;
+ast* parse_return(void){
+    ast *new_node;
+    switch_token(1);
+
+    if(current_token->type == T_IDENTIFIER){
+        new_node = create_node(IDENTIFIER, current_token->line, current_token->value);
+        if(!new_node) return NULL;
+        switch_token(1);
+
+        return end_statement() ? new_node : NULL;
+    } else if(current_token->type == T_NUMBER){
+        new_node = create_node(VALUE, current_token->line, current_token->value);
+        if(!new_node) return NULL;
+        switch_token(1);
+
+        return end_statement() ? new_node : NULL;
+    } else {
+        add_error_entry(ERROR, current_token->line, "Expected Identifier or Number as return argument");
+        return NULL;
     }
 }
 
-/*
-measure is not parsed as a normal function
-since we can only measure one qubit we store the qubit name and LLVMValueRef in this node directly
-*/
-ast* parse_measure(ast *current_node){
-    if(current_token->next_token->type != BRACKET_OPEN){
-        diagnose d = {.line = current_token->line, .message = "Expected open bracket in measure call'", .type = WARNING};
-        add_error_entry(d);
-        switch_token(1);
-    } else if(*(current_token->next_token->value) != '('){
-        diagnose d = {.line = current_token->line, .message = "Expected '(' bracket", .type = WARNING};
-        add_error_entry(d);
-        switch_token(1);
+ast* parse_assign(void){
+    ast *new_node;
+    if(check_type(current_token->value) != VAR_UNKOWN){
+        new_node = create_node(ASSIGN, current_token->line, look_forward(2)->value);
+        if(!new_node) return NULL;
+        // creating name node for the new variable
+        new_node->left = create_node(NAME, current_token->line, look_forward(1)->value);
+        new_node->left->resolved_type = check_type(current_token->value);
+
+        switch_token(3);
     } else {
+        new_node = create_node(ASSIGN, current_token->line, look_forward(1)->value);
+        if(!new_node) return NULL;
+        // creating identifier node for assign
+        new_node->left = create_node(IDENTIFIER, current_token->line, current_token->value);
         switch_token(2);
     }
 
-    ast *new_node = create_node();
-    new_node->type = MEASURE;
+    ast *subtree = parse_expression(0);
+    if(!subtree) return NULL;
 
-    current_node->branch = new_node;
+    new_node->right = subtree;
 
-    if(current_token->type != INDICATOR){
-        diagnose d = {.line = current_token->line, .message = "Expected qubit name to measure", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-
-    size_t size = strlen(current_token->value)+1;
-    new_node->value = calloc(1, size);
-    if(!new_node->value){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    strncpy(new_node->value, current_token->value, size);
-
-    switch_token(1);
-
-    if(current_token->type != BRACKET_CLOSE){
-        diagnose d = {.line = current_token->line, .message = "Expected closed bracket in measure call", .type = ERROR};
-        if(current_token->type == END_OF_LINE) d.type = WARNING;
-        add_error_entry(d);
-        if(d.type == ERROR) return NULL;
-    } else if(*(current_token->value) != ')'){
-        diagnose d = {.line = current_token->line, .message = "Expected ')' bracket", .type = WARNING};
-        add_error_entry(d);
-    }
-
-    switch_token(1);
-
-    return parse_start(new_node);
+    return end_statement() ? new_node : NULL;
 }
 
-/*
-function that parses a function call. for now this can not parse custom functions
-it parses parameters, which can only be identifiers and numbers
-*/
-ast* parse_call(ast *current_node){
-    if(current_token->next_token->type != BRACKET_OPEN) return NULL;
-    if(*(current_token->next_token->value) != '('){
-        diagnose d = {.line = current_token->line, .message = "Expected '(' bracket", .type = WARNING};
-        add_error_entry(d);
-    }
+ast* parse_declaration(void){
+    // creating name node for the new variable
+    ast *new_node = create_node(NAME, current_token->line, look_forward(1)->value);
+    new_node->resolved_type = check_type(current_token->value);
 
-    ast *new_node = create_node();
-    new_node->type = CALL;
-
-    size_t size = strlen(current_token->value)+1;
-    new_node->name = calloc(1, size);
-    if(!new_node->name){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
-    strncpy(new_node->name, current_token->value, size);
-
-    current_node->branch = new_node;
     switch_token(2);
 
-    ast *temp_node = create_node();
-    new_node->left = temp_node;
-    while(current_token != NULL){
-        if(current_token->type == BRACKET_CLOSE){
-            if(*(current_token->value) != ')'){
-                diagnose d = {.line = current_token->line, .message = "Expected ')' bracket", .type = WARNING};
-                add_error_entry(d);
-            }
-            switch_token(1);
-            break;
-
-        } else if(current_token->type == NUMBER){
-            ast *number_node = create_node();
-            number_node->type = VALUE;
-            temp_node->branch = number_node;
-
-            size_t number_size = strlen(current_token->value)+1;
-            number_node->value = calloc(1, number_size);
-            if(!new_node->value){
-                diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-                add_error_entry(d);
-                return NULL;
-            }
-            strncpy(number_node->value, current_token->value, number_size);
-
-            switch_token(1);
-
-            // seems as though we have encountered a double/float
-            if(current_token->type == DELIMITER){
-                switch_token(1);
-                if(current_token->type == NUMBER){
-                    number_node->value = realloc(number_node->value, size+strlen(current_token->value));
-                    if(!number_node->value){
-                        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-                        add_error_entry(d);
-                        return NULL;
-                    }
-                    strcat(number_node->value, current_token->value);
-                    switch_token(1);
-                }
-            }
-            temp_node = number_node;
-            continue;
-            
-        } else if(current_token->type == INDICATOR){
-            ast *iden_node = create_node();
-            iden_node->type = IDENTIFIER;
-
-            size_t name_size = strlen(current_token->value)+1;
-            iden_node->name = calloc(1, name_size);
-            if(!iden_node->name){
-                diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
-                add_error_entry(d);
-                return NULL;
-            }
-            strncpy(iden_node->name, current_token->value, name_size);
-
-            temp_node->branch = iden_node;
-            switch_token(1);
-            temp_node = iden_node;
-            continue;
-
-        } else if(current_token->type == DELIMITER){
-            switch_token(1);
-        } else if(current_token->type == END_OF_LINE){
-            diagnose d = {.line = current_token->line, .message = "Missing ')' bracket", .type = ERROR};
-            add_error_entry(d);
-            return NULL;
-        } else {
-            diagnose d = {.line = current_token->line, .message = "Only variable names or numbers allowed in function call", .type = ERROR};
-            add_error_entry(d);
-            return NULL;
-        }
-
-    }
-    if(new_node->left->branch != NULL){
-        temp_node = new_node->left;
-        new_node->left = new_node->left->branch;
-        free(temp_node);
-    }
-
-    return parse_start(new_node);
+    return end_statement() ? new_node : NULL;
 }
 
-/*
-this function is the starting point for all string based commands
-it determines what the string means and tries to send it to the apropiate function
-*/
-ast* parse_indicator(ast *current_node){
-    if(current_token->value == NULL){
-        diagnose d = {.line = current_token->line, .message = "parse_indicator() has no string to parse", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
-    }
-    // check if its a type
-    ast *res = parse_type(current_node);
-    if(res != NULL){
-        return res;
-    }
+ast* parse_call(void){ 
+    ast *new_node = create_node(CALL, current_token->line, current_token->value);
+    if(!new_node) return NULL;
     
-    // check if its a function definition
-    if(strcmp(current_token->value, "def") == 0){
-        return parse_function(current_node);
+    switch_token(2);
+    
+    ast **tail = &new_node->left;
+    if(!match(current_token, T_BRACKET_CLOSE, ")")){
+        do {
+            ast *arg = parse_expression(0);
+            if(!arg) return NULL;
+
+            *tail = arg;
+            tail = &arg->branch;
+        } while(accept(T_DELIMITER, ","));
     }
 
-    // check if its a loop
-    if((strcmp(current_token->value, "for") == 0) || (strcmp(current_token->value, "while") == 0)){
-        return parse_loop(current_node);
-    }
 
-    // check if its an if conditional 
-    if(strcmp(current_token->value, "if") == 0){
-        return parse_if(current_node);
-    }
-    
-    // check if its a measure
-    if((strcmp(current_token->value, "measure") == 0) || (strcmp(current_token->value, "MEASURE") == 0) || (strcmp(current_token->value, "MZ") == 0) || strcmp(current_token->value, "mz") == 0){
-        return parse_measure(current_node);
-    }
-    
-    // check if its an include
-    if(strcmp(current_token->value, "include") == 0){
-        return parse_include(current_node);
-    }
-    
-    // check if its a return
-    if(strcmp(current_token->value, "return") == 0){
-        ast *new_node = create_node();
-        new_node->type = RETURN;
-        current_node->branch = new_node;
-        
+    if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+    return end_statement() ? new_node : NULL;
+}
+
+ast* parse_statement(void){
+    if(current_token->type != T_IDENTIFIER){
+        add_error_entry(ERROR, current_token->line, "Expected an Identifer");
         switch_token(1);
-        return parse_start(current_node);
-    }
-    
-    // check if its a function call
-    res = parse_call(current_node);
-    if(res != NULL){
-        return res;
-    }
-
-    // now we assume we are handling a variable reference aka an identifier
-    ast *new_node = create_node();
-    new_node->type = IDENTIFIER;
-    
-    size_t size = strlen(current_token->value)+1;
-    new_node->name = calloc(1, size);
-    if(!new_node->name){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node name", .type = FATAL};
-        add_error_entry(d);
         return NULL;
     }
-    strncpy(new_node->name, current_token->value, size);
 
-    current_node->branch = new_node;
+    if(match(current_token, T_IDENTIFIER, "def")){
+        return parse_function();
+    }
+
+    if(match(current_token, T_IDENTIFIER, "while")){
+        return parse_loop(0);
+    }
+
+    if(match(current_token, T_IDENTIFIER, "for")){
+        return parse_loop(1);
+    }
+
+    if(match(current_token, T_IDENTIFIER, "if")){
+        return parse_conditional();
+    }
+
+    if(match(current_token, T_IDENTIFIER, "measure") || match(current_token, T_IDENTIFIER, "MEASURE") || match(current_token, T_IDENTIFIER, "mz") || match(current_token, T_IDENTIFIER, "MZ")){
+        return parse_measure();
+    }
+
+    if(match(current_token, T_IDENTIFIER, "return")){
+        return parse_return();
+    }
+
+    bool typed = check_type(current_token->value) != VAR_UNKOWN && look_forward(1)->type == T_IDENTIFIER;
+
+    if(typed && match(look_forward(2), T_OPERATOR, "=") && !match(look_forward(3), T_OPERATOR, "=")){
+        return parse_assign();
+    }
+
+    if(typed) return parse_declaration();
+
+    if(match(look_forward(1), T_OPERATOR, "=") && !match(look_forward(2), T_OPERATOR, "=")){
+        return parse_assign();
+    }
+
+    if(match(look_forward(1), T_BRACKET_OPEN, "(")){
+        return parse_call();
+    }
+
+    add_error_entry(ERROR, current_token->line, "Unable to find a statement");
     switch_token(1);
-
-    return parse_start(new_node);
+    return NULL;
 }
 
-/*
-this parses a number
-since we use strings at this stage this is a very simple function
-*/
-ast* parse_number(ast *current_node){
-    ast *new_node = create_node();
-    new_node->type = VALUE;
-    new_node->resolved_type = VAR_INTEGER;
-    current_node->branch = new_node;
+int parse_start(ast *current_node){
+    int res = 0;
+    token *last_token;
 
-    size_t size = strlen(current_token->value)+1;
-    new_node->value = calloc(1, size);
-    if(!new_node->value){
-        diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-        add_error_entry(d);
-        return NULL;
-    }
+    while(1){
+        while(current_token->type == T_END_OF_LINE || current_token->type == T_COMMENT || current_token->type == T_START) switch_token(1);
+        if(current_token->type == T_END) break;
 
-    strncpy(new_node->value, current_token->value, size);
+        last_token = current_token;
 
-    switch_token(1);
+        ast *node = parse_statement();
+        if(!node){
+            res = 1;
+            while(current_token->type != T_END && current_token->type != T_END_OF_LINE) switch_token(1);
+        }
+        else {
+            current_node->branch = node;
+            current_node = current_node->branch;
+        }
 
-    // seems as though we have encountered a double/float
-    if(current_token->type == DELIMITER){
-        new_node->resolved_type = VAR_DOUBLE;
-        switch_token(1);
-        if(current_token->type == NUMBER){
-            new_node->value = realloc(new_node->value, size+strlen(current_token->value)+1);
-            if(!new_node->value){
-                diagnose d = {.line = current_token->line, .message = "Failed to allocate memory for node value", .type = FATAL};
-                add_error_entry(d);
-                return NULL;
-            }
-            strcat(new_node->value, ".");
-            strcat(new_node->value, current_token->value);
+        if(last_token == current_token){
+            add_error_entry(INTERNAL, current_token->line, "Infinite loop detected");
             switch_token(1);
         }
     }
-
-    return parse_start(new_node);
-}
-
-
-
-
-/*
-The start for our recursive decent parser
-parse_start branches out to the other recursive functions
-the END and BRACKET_CLOSE(under certain conditions) tokens are terminating
-*/
-ast* parse_start(ast *current_node){
-    if(!current_token){
-        return current_node;
-    } else if(!current_node){
-        return NULL;
-    }
-
-    diagnose d;
-    switch(current_token->type){
-        case INDICATOR:
-            return parse_indicator(current_node);
-        
-        case NUMBER:
-            return parse_number(current_node);
-
-        case END_OF_LINE:
-            last_eol = current_node;
-            if(in_assign){
-                return current_node;
-            } else if(in_parameters){
-                d = (diagnose){.line = current_token->line, .message = "Unrecognised symbol as a function parameter", .type = ERROR};
-                add_error_entry(d);
-                return NULL;
-            }
-            switch_token(1);
-            return parse_start(current_node);
-        
-        case OPERATOR:
-            if(in_parameters){
-                d = (diagnose){.line = current_token->line, .message = "Unrecognised symbol as a function parameter", .type = ERROR};
-                add_error_entry(d);
-                return NULL;
-            }
-            return parse_operator(current_node);
-
-        case START:
-        case COMMENT:
-            if(in_parameters){
-                d = (diagnose){.line = current_token->line, .message = "Unrecognised symbol as a function parameter", .type = ERROR};
-                add_error_entry(d);
-                return NULL;
-            }
-            switch_token(1);
-            return parse_start(current_node);
-        
-        case BRACKET_OPEN:
-            if(in_assign){
-                // TODO
-            }
-            d = (diagnose){.line = current_token->line, .message = "Open Bracket without context", .type = WARNING};
-            add_error_entry(d);
-            switch_token(1);
-            return parse_start(current_node);
-
-        case BRACKET_CLOSE:
-            if(in_parameters || in_if || in_loop){
-                if(*(current_token->value) == ')'){
-                    return current_node;
-                }
-            } else if(in_body){
-                if(*(current_token->value) == '}'){
-                    return current_node;
-                }
-            }
-
-            d = (diagnose){.line = current_token->line, .message = "Missing open bracket", .type = WARNING};
-            add_error_entry(d);
-            return NULL;
-            
-        case END:
-            if(in_parameters){
-                d = (diagnose){.line = current_token->line, .message = "Missing ')' in function parameters", .type = ERROR};
-                add_error_entry(d);
-                return NULL;
-            } else if(in_body){
-                d = (diagnose){.line = current_token->line, .message = "Missing '}' in function body", .type = ERROR};
-                add_error_entry(d);
-                return NULL;
-            }
-            return current_node;
-
-            default:
-            d = (diagnose){.line = current_token->line, .message = "Not recognised in this context", .type = ERROR};
-            add_error_entry(d);
-            if(in_parameters || in_body || in_assign){
-                return NULL;
-            }
-        }
-    return current_node;
+    return res;
 }
 
 /*
@@ -1105,19 +621,16 @@ this is the access function for main
 it resets the global variables
 */
 ast* generate_ast(token *first_token){
-    // initialisations
-    in_body = 0;
-    in_parameters = 0;
-    in_assign = 0;
-
+    ast *root = create_node(ROOT, 0, "");
     current_token = first_token;
-    ast *root = create_node();
-    last_eol = root;
 
-    if(parse_start(root) == NULL){
-        diagnose d = {.line = current_token->line, .message = "parse_start() returned NULL", .type = ERROR};
-        add_error_entry(d);
-        return NULL;
+    int res = parse_start(root);
+
+    if(res != 0){
+        char message[40];
+        snprintf(message, 40, "parse_start() exited with error code %d", res);
+        add_error_entry(INTERNAL, current_token->line, message);
+        root = NULL;
     }
     check_errors();
     return root;

@@ -36,16 +36,13 @@ void print_ast(ast *root, int level){
                 case VAR_VOID:
                     str = "void";
                     break;
-                case VAR_VECTOR:
-                    str = "vector";
-                    break;
                 case VAR_DOUBLE:
                     str = "double";
                     break;
                 case VAR_INTEGER:
                     str = "integer";
                     break;
-                case VAR_NATURAL:
+                case VAR_UINTEGER:
                     str = "natural";
                     break;
                 default:
@@ -54,10 +51,10 @@ void print_ast(ast *root, int level){
             printf("├── TYPE: '%s'\n", str);
             break;
         case NAME:
-            printf("├── NAME: '%s'\n",root->name);
+            printf("├── NAME: '%s'\n",root->value);
             break;
         case IDENTIFIER:
-            printf("├── IDENTFIER: '%s'\n",root->name);
+            printf("├── IDENTFIER: '%s'\n",root->value);
             break;
         case CALL:
             printf("├── CALL: '%s'\n",root->value);
@@ -74,26 +71,26 @@ void print_ast(ast *root, int level){
         case BOOLOP:
             printf("├── BOOLOP: '%c'\n", *(root->value));
             break;
+        case UNOP:
+            printf("├── UNOP: '%c'\n", *(root->value));
+            break;
         case CONDITIONAL:
             printf("├── IF: \n");
             break;
-        case LOOP:
-            if(*(root->value) == 'f'){
-                printf("├── FOR LOOP: \n");
-            } else if(*(root->value) == 'w'){
-                printf("├── WHILE LOOP: \n");
-            } else {
-                printf("├── LOOP: \n");
-            }
+        case FOR_LOOP:
+            printf("├── FOR LOOP: \n");
+            break;
+        case WHILE_LOOP:
+            printf("├── WHILE LOOP: \n");
             break;
         case INCLUDE:
             printf("├── INCLUDE: '%s'\n", root->value);
             break;
         case FUNCTION:
-            printf("├── FUNCTION: '%s'\n", root->name);
+            printf("├── FUNCTION: '%s'\n", root->value);
             break;
         case MEASURE:
-            printf("├── MEASURE: '%s'\n", root->name);
+            printf("├── MEASURE: '%s'\n", root->value);
             break;
         case RETURN:
             printf("├── RETURN\n");
@@ -116,7 +113,28 @@ void print_ast(ast *root, int level){
             printf("├─> Right:\n");
             print_ast(root->right, level+1);
             break;
-        case LOOP:
+        case UNOP:
+            printprefix(level+1);
+            printf("├─> Operand:\n");
+            print_ast(root->left, level+1);
+        case FOR_LOOP:
+            printprefix(level+1);
+            printf("├─> Initialisation:\n");
+            print_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Condition:\n");
+            print_ast(root->other, level+1);
+            printf("├─> Body + Latch:\n");
+            print_ast(root->right, level+1);
+            break;
+        case WHILE_LOOP:
+            printprefix(level+1);
+            printf("├─> Condition:\n");
+            print_ast(root->left, level+1);
+            printprefix(level+1);
+            printf("├─> Body:\n");
+            print_ast(root->right, level+1);
+            break;
         case FUNCTION:
             printprefix(level+1);
             printf("├─> Parameters:\n");
@@ -132,10 +150,17 @@ void print_ast(ast *root, int level){
             printprefix(level+1);
             printf("├─> Body:\n");
             print_ast(root->right, level+1);
+            printf("├─> Else:\n");
+            print_ast(root->other, level+1);
             break;
         case CALL:
             printprefix(level+1);
             printf("├─> Parameters:\n");
+            print_ast(root->left, level+1);
+            break;
+        case RETURN:
+            printprefix(level+1);
+            printf("├─> Expression:\n");
             print_ast(root->left, level+1);
             break;
         default:
@@ -148,47 +173,47 @@ void print_ast(ast *root, int level){
 void print_token_list(token* first_token){
     while(first_token != NULL){
         switch(first_token->type){
-            case INDICATOR:
+            case T_IDENTIFIER:
                 printf("[IND %s]", first_token->value);
                 break;
             
-            case NUMBER:
+            case T_NUMBER:
                 printf("[NUM %s]", first_token->value);
                 break;
             
-            case END_OF_LINE:
+            case T_END_OF_LINE:
                 printf("[EOL %c]\n", *(first_token->value));
                 break;
 
-            case DELIMITER:
+            case T_DELIMITER:
                 printf("[DEL %c]", *(first_token->value));
                 break;
 
-            case COMMENT:
+            case T_COMMENT:
                 printf("[COM %c]", *(first_token->value));
                 break;
 
-            case BRACKET_CLOSE:
+            case T_BRACKET_CLOSE:
                 printf("[BC %c]", *(first_token->value));
                 break;
 
-            case BRACKET_OPEN:
+            case T_BRACKET_OPEN:
                 printf("[BO %c]", *(first_token->value));
                 break;
 
-            case OPERATOR:
+            case T_OPERATOR:
                 printf("[OP %c]", *(first_token->value));
                 break;
 
-            case START:
+            case T_START:
                 printf("\n[START]\n");
                 break;
 
-            case END:
+            case T_END:
                 printf("[END]\n\n");
                 break;
             
-            case UNKOWN:
+            case T_UNKOWN:
                 if(first_token->value == NULL) printf("[UN]");
                 else printf("[UN %c]", *(first_token->value));
                 break;
@@ -215,16 +240,13 @@ void print_var_list(variable *var_list, size_t size){
                 case VAR_VOID:
                     str = "void";
                     break;
-                case VAR_VECTOR:
-                    str = "vector";
-                    break;
                 case VAR_DOUBLE:
                     str = "double";
                     break;
                 case VAR_INTEGER:
                     str = "integer";
                     break;
-                case VAR_NATURAL:
+                case VAR_UINTEGER:
                     str = "natural";
                     break;
                 default:
@@ -248,38 +270,14 @@ void free_token_list(token* first_token){
 }
 
 void free_ast(ast *root){
-    if(!root){
-        return;
+    while(root){
+        ast *next = root->branch;
+        free_ast(root->left);
+        free_ast(root->right);
+        free_ast(root->other);
+        free(root->value);
+        free(root);
     }
-
-    switch(root->type){
-        case CALL:
-            free(root->name);
-            free_ast(root->left);
-            break;
-        case BINOP:
-        case ASSIGN:
-        case LOOP:
-            free(root->value);
-            free_ast(root->left);
-            free_ast(root->right);
-            break;
-        case CONDITIONAL:
-            free_ast(root->left);
-            free_ast(root->right);
-            break;
-        case FUNCTION:
-            free(root->name);
-            free_ast(root->left);
-            free_ast(root->right);
-            break;
-        default:
-            free(root->name);
-            break;
-    }
-    ast *next = root->branch;
-    free(root);
-    free_ast(next);
 }
 
 void free_var_list(variable *var_list, size_t size){

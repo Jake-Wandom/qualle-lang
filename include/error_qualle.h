@@ -24,6 +24,6 @@ typedef struct {
 void init_errors(void);
 void print_errors(void); // prints the error list
 void check_errors(void);
-void add_error_entry(diagnose d);
+void add_error_entry(severity type, int line, char *message);
 
 #endif

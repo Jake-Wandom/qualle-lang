@@ -3,17 +3,17 @@
 
 // enum that defines the token types
 enum token_type {
-    INDICATOR,
-    NUMBER,
-    OPERATOR,
-    COMMENT,
-    BRACKET_OPEN,
-    BRACKET_CLOSE,
-    DELIMITER,
-    END_OF_LINE,
-    START,
-    END,
-    UNKOWN
+    T_IDENTIFIER,
+    T_NUMBER,
+    T_OPERATOR,
+    T_COMMENT,
+    T_BRACKET_OPEN,
+    T_BRACKET_CLOSE,
+    T_DELIMITER,
+    T_END_OF_LINE,
+    T_START,
+    T_END,
+    T_UNKOWN
 };
 
 //struct that defines tokens
