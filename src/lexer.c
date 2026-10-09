@@ -46,7 +46,7 @@ token* check_token(char chr, token* current_token){
         add_error_entry(INTERNAL, -1, "check_token() has not received a valid token");
         return NULL;
     } else if(comment_ignore == 1){
-        if((chr != '\n') && (chr != ';')){
+        if((chr != '\n')){
             return current_token;
         }
         comment_ignore = 0;
@@ -55,6 +55,8 @@ token* check_token(char chr, token* current_token){
     switch(chr) {
         // whitespaces 
         case ' ':
+        case '\t':
+        case '\r':
             space = 1;
             break;
         
@@ -130,8 +132,8 @@ token* check_token(char chr, token* current_token){
         case '.':
             if((current_token->type == T_NUMBER) && (space == 0)){
                 size_t len = strlen(current_token->value);
-                if((len % 8) == 0){
-                    current_token->value = realloc(current_token->value, len+(9*sizeof(char)));
+                if((len % 7) == 0){
+                    current_token->value = realloc(current_token->value, len+(8*sizeof(char)));
                     if(!current_token->value){
                         add_error_entry(FATAL, current_token->line, "Failed to allocate memory for new token");
                         return NULL;
@@ -196,7 +198,7 @@ token* check_token(char chr, token* current_token){
         // comments are done with a # but I consider also allowing C style comments
         case '#':
             comment_ignore = 1;
-            if(current_token->type != T_END_OF_LINE) break;
+            if(current_token->type == T_COMMENT) break;
             
             current_token = create_token(current_token);
             if(!current_token){
@@ -288,8 +290,8 @@ token* check_token(char chr, token* current_token){
         case '0' ... '9':
             if(((current_token->type == T_NUMBER) || (current_token->type == T_IDENTIFIER)) && (space == 0)){
                 size_t len = strlen(current_token->value);
-                if((len % 8) == 0){
-                    current_token->value = realloc(current_token->value, len+(9*sizeof(char)));
+                if((len % 7) == 0){
+                    current_token->value = realloc(current_token->value, len+(8*sizeof(char)));
                     if(!current_token->value){
                         add_error_entry(FATAL, current_token->line, "Failed to allocate memory for new token");
                         return NULL;
@@ -305,7 +307,7 @@ token* check_token(char chr, token* current_token){
                 }
                 current_token->line = current_line;
                 current_token->type = T_NUMBER;
-                current_token->value = calloc(9, sizeof(char));
+                current_token->value = calloc(8, sizeof(char));
                 if(!current_token->value){
                     add_error_entry(FATAL, current_token->line, "Failed to allocate memory for new token");
                     return NULL;
@@ -375,10 +377,7 @@ token* get_token(char* buffer){
     // create the end token
     current_token = create_token(current_token);
     current_token->type = T_END;
-    
-    if(first_token == NULL){
-        add_error_entry(ERROR, -1, "Empty token list");
-    }
+    current_token->line = current_line;
 
     check_errors();
     return first_token;
