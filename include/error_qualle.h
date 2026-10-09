@@ -21,6 +21,7 @@ typedef struct {
     int error_count;
 } global_errors;
 
+void free_errors(void);
 void init_errors(void);
 void print_errors(void); // prints the error list
 void check_errors(void);
