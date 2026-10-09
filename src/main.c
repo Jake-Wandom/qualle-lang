@@ -35,29 +35,31 @@ int main(int argc, char **argv){
             } else if(strcmp(argv[i],"--adaptive") == 0){
                 adaptive = 1;
             } else {
-                switch (argv[i][1]){
-                    // help -> print man page
-                    case 'h':
-                        print_man_page();
-                        return 0;
-                    // qir -> generate quantum ir instead of bitcode
-                    case 'l':
-                        ll = 1;
-                        break;
-                    // optimise -> use optimisation strategies
-                    case 'o':
-                        optimisation = 1;
-                        break;
-                    case 'p':
-                        print = 1;
-                        break;
-                    case 'a':
-                        adaptive = 1;
-                        break;
-                    default:
-                        fprintf(stderr, "Unkown flag -%c\n", argv[i][1]);
-                        return_value = 1;
-                        goto end;
+                for(int j = 1; argv[i][j]; j++){
+                    switch (argv[i][j]){
+                        // help -> print man page
+                        case 'h':
+                            print_man_page();
+                            goto end;
+                        // qir -> generate quantum ir instead of bitcode
+                        case 'l':
+                            ll = 1;
+                            break;
+                        // optimise -> use optimisation strategies
+                        case 'o':
+                            optimisation = 1;
+                            break;
+                        case 'p':
+                            print = 1;
+                            break;
+                        case 'a':
+                            adaptive = 1;
+                            break;
+                        default:
+                            fprintf(stderr, "Unkown flag -%c\n", argv[i][j]);
+                            return_value = 1;
+                            goto end;
+                    }
                 }
             }
         } else {
@@ -65,47 +67,52 @@ int main(int argc, char **argv){
             // we increase num_of_files, realloc and try to open the file and store it in files
             num_of_files++;
             files = realloc(files, num_of_files*sizeof(FILE*));
-            *(files+num_of_files-1) = fopen(argv[i], "r");
+            files[num_of_files-1] = fopen(argv[i], "r");
             
-            if(*(files+num_of_files-1) == NULL){
+            if(files[num_of_files-1] == NULL){
                 fprintf(stderr, "Could not locate or open file %s\n", argv[i]);
+                for(int j = 0; j < num_of_files-1; j++){
+                    fclose(files[j]);
+                }
                 return_value = 2;
                 goto end;
             }
         }
     }
 
+    if(num_of_files == 0){
+        fprintf(stderr, "No input files to compile\n");
+        return_value = 2;
+        goto end;
+    }
+
     // determine the maximum buffer size
     // we start with the 0
     size_t buffer_size = 0;
-    size_t line_buffer_size = 4096;
 
     // repeat for all files
     for(int i = 0; i < num_of_files; i++){
-        fseek(*(files+i), 0, SEEK_END);
-        if(ftell(*(files+i)) > (long)buffer_size){
-            buffer_size = ftell(*(files+i));
+        fseek(files[i], 0, SEEK_END);
+        if(ftell(files[i]) > (long)buffer_size){
+            buffer_size = ftell(files[i]);
             buffer_size++;
         }
-        rewind(*(files+i));
+        rewind(files[i]);
     }
-    if(print) printf("\nBUFFER SIZE: %lu, %lu\n", buffer_size, line_buffer_size);
+    if(print) printf("\nBUFFER SIZE: %lu\n", buffer_size);
 
 
     // now we process all files into token streams
     main_buffer = calloc(buffer_size, sizeof(char));
-    line_buffer = calloc(line_buffer_size, sizeof(char));
     token* first_token;
 
     init_errors();
 
     for(int i = 0; i < num_of_files; i++){
         if(print) printf("FILE CONTENT %i. FILE:\n",i+1);
-
-        while(fgets(line_buffer, line_buffer_size, *(files+i)) != NULL){
-            if(print )printf("%s", line_buffer);
-            strcat(main_buffer, line_buffer);
-        }
+        size_t s = fread(main_buffer, buffer_size, 1, files[i]);
+        //if(s == 0) continue;
+        if(print) printf("%s", main_buffer);
 
         if(print) printf("\n\n");
 
@@ -129,7 +136,6 @@ int main(int argc, char **argv){
         
         // reset buffer
         zero_buffer(main_buffer, buffer_size);
-        zero_buffer(line_buffer, line_buffer_size);
         // release the list!
         free_token_list(first_token);
         free_ast(root);
