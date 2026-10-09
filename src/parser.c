@@ -12,7 +12,27 @@ static token *current_token;
 // flags that mark, if we are in a certain program state
 bool adaptive = 0;
 
-
+// reserved keywords list
+#define NUM_KEYWORDS 16
+static const char *keywords[] = {
+    "def",
+    "if",
+    "else",
+    "for",
+    "while",
+    "measure",
+    "MEASURE",
+    "MZ",
+    "mz",
+    "return",
+    "qubit",
+    "bit",
+    "int",
+    "uint",
+    "double",
+    "void",
+    "main"
+};
 /*
 creates a new node with all pointer values set to NULL
 contrary to create_token, this function does not automatically append
@@ -29,8 +49,9 @@ ast* create_node(enum ast_type type, int line, char *value){
     new_node->right = NULL;
     new_node->other = NULL;
     new_node->value = strdup(value);
-    new_node->llvm =  NULL;
     new_node->line = line;
+    new_node->index = -1;
+    new_node->res_id = -1;
 
     return new_node;
 }
@@ -40,7 +61,7 @@ Traverses the token list for num tokens
 If the token is NULL we exit, this should not happen
 If the token is END, we return it
 */
-void switch_token(int num){
+static void switch_token(int num){
     for(int i = 0; i < num; i++){
         if(!current_token){
             add_error_entry(FATAL, -1, "Null pointer while token switch");
@@ -54,24 +75,24 @@ void switch_token(int num){
 
 /*
 */
-token* look_forward(int num){
-    token *token = current_token;
-    for(int i = 0; i < num && token->type != T_END; i++){
-        token = token->next_token;
+static token* look_forward(int num){
+    token *tok = current_token;
+    for(int i = 0; i < num && tok->type != T_END; i++){
+        tok = tok->next_token;
     }
-    return token;
+    return tok;
 }
 
 /*
 Matches the token to a token type and word
 Both the type and word have to be correct
 */
-bool match(token *token, enum token_type type, char *word){
+static bool match(token *tok, enum token_type type, char *word){
     if(!word) return 0;
-    if(!token->value) return 0;
+    if(!tok->value) return 0;
     
-    int res = strcmp(token->value, word);
-    if((res == 0) && (token->type == type)){
+    int res = strcmp(tok->value, word);
+    if((res == 0) && (tok->type == type)){
         return 1;
     } else {
         return 0;
@@ -81,7 +102,7 @@ bool match(token *token, enum token_type type, char *word){
 /*
 If the current token is a match, it switches token and returns
 */
-bool accept(enum token_type type, char *word){
+static bool accept(enum token_type type, char *word){
     if(!match(current_token, type, word)) return 0;
     switch_token(1);
     return 1;
@@ -90,7 +111,7 @@ bool accept(enum token_type type, char *word){
 /*
 Special case of accept, where we throw an error message if it is false
 */
-bool expect(enum token_type type, char *word){
+static bool expect(enum token_type type, char *word){
     if(accept(type, word)) return 1;
     char message[64];
     snprintf(message, 64, "Expected %s", word);
@@ -102,7 +123,7 @@ bool expect(enum token_type type, char *word){
 Function that gets called after every statement parsing function
 It Checks the termination conditions for a statement
 */
-bool end_statement(void){
+static bool end_statement(void){
     if(current_token->type == T_END_OF_LINE){
         switch_token(1);
         return 1;
@@ -114,7 +135,17 @@ bool end_statement(void){
     return 0;
 }
 
-bool determine_binop(op_info *op){
+static bool check_keywords(char *name){
+    for(int i = 0; i < NUM_KEYWORDS; i++){
+        if(strcmp(keywords[i], name) == 0){
+            add_error_entry(ERROR, current_token->line, "Name overlaps with QUALLE keyword");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static bool determine_binop(op_info *op){
     if(current_token->type != T_OPERATOR) return 0;
     char op1 = current_token->value[0];
     char op2 = (look_forward(1)->type == T_OPERATOR) ? look_forward(1)->value[0] : 0;
@@ -174,7 +205,12 @@ bool determine_binop(op_info *op){
 }
 
 enum variable_type check_type(char *name){
-    enum variable_type type;
+    enum variable_type type = VAR_UNKOWN;
+
+    if(!name){
+        add_error_entry(INTERNAL, current_token->line, "passed null poiner to check_type()");
+        return type;
+    }
 
     if(strcmp(name, "qubit") == 0){
         type = VAR_QUBIT;
@@ -188,37 +224,36 @@ enum variable_type check_type(char *name){
         type = VAR_DOUBLE;
     } else if(strcmp(name, "void") == 0){
         type = VAR_VOID;
-    } else {
-        type = VAR_UNKOWN;
     }
 
     return type;
 }
 
 ast* parse_primary(void){
-    token *token = current_token;
+    token *tok = current_token;
 
-    if(token->type == T_NUMBER){
+    if(tok->type == T_NUMBER){
         enum variable_type type = VAR_INTEGER;
-        if(strchr(token->value, '.') != NULL){
+        if(strchr(tok->value, '.') != NULL){
             type = VAR_DOUBLE;
         }
 
-        ast *new_node = create_node(VALUE, token->line, token->value);
+
+        ast *new_node = create_node(VALUE, tok->line, tok->value);
         if(!new_node) return NULL;
         new_node->resolved_type = type;
         
         switch_token(1);
         return new_node;
     }
-    if(token->type == T_IDENTIFIER){
-        ast *new_node = create_node(IDENTIFIER, token->line, token->value);
+    if(tok->type == T_IDENTIFIER){
+        ast *new_node = create_node(IDENTIFIER, tok->line, tok->value);
         if(!new_node) return NULL;
 
         switch_token(1);
         return new_node;
     }
-    if(match(token, T_BRACKET_OPEN, "(")){
+    if(match(tok, T_BRACKET_OPEN, "(")){
         switch_token(1);
         ast *inner = parse_expression(0);
         if(!inner || !expect(T_BRACKET_CLOSE, ")")) return NULL;
@@ -226,18 +261,18 @@ ast* parse_primary(void){
         return inner;
     }
 
-    add_error_entry(ERROR, token->line, "Expected value or variable");
+    add_error_entry(ERROR, tok->line, "Expected value or variable");
     return NULL;
 }
 
 ast* parse_unary(void){
-    token *token = current_token;
-    if(match(token, T_OPERATOR, "-") || match(token, T_OPERATOR, "!")){
+    token *tok = current_token;
+    if(match(tok, T_OPERATOR, "-") || match(tok, T_OPERATOR, "!")){
         switch_token(1);
         ast *operand = parse_unary();
         if(!operand) return NULL;
 
-        ast *new_node = create_node(UNOP, token->line, token->value);
+        ast *new_node = create_node(UNOP, tok->line, tok->value);
         if(!new_node) return NULL;
         new_node->left = operand;
 
@@ -277,29 +312,35 @@ ast* parse_body(bool *ok){
     while(!match(current_token, T_BRACKET_CLOSE, "}")){
         while(current_token->type == T_END_OF_LINE || current_token->type == T_COMMENT || current_token->type == T_START) switch_token(1);
         if(match(current_token, T_BRACKET_CLOSE, "}")) break;
+
         if(current_token->type == T_END){
             add_error_entry(ERROR, current_token->line, "Missing '}'");
+            *ok = 0;
             return NULL;
         }
 
         last_token = current_token;
 
         ast *node = parse_statement();
-        if(!node) return NULL;
+        if(!node){
+            *ok = 0;
+            return NULL;
+        }
 
         current_node->branch = node;
         current_node = current_node->branch;
 
         if(last_token == current_token){
             add_error_entry(INTERNAL, current_token->line, "Infinite loop detected");
+            *ok = 0;
             switch_token(1);
         }
     }
     current_node = body_root->branch;
+    free(body_root->value);
     free(body_root);
-    if(!current_node){
-        *ok = 0;
-    }
+    
+
     return current_node;
 }
 
@@ -311,6 +352,9 @@ ast* parse_function(void){
         add_error_entry(ERROR, current_token->line, "Missing function name");
         new_node = create_node(FUNCTION, current_token->line, "missing_name");
     } else { 
+        if(!check_keywords(current_token->value)){
+            return NULL;
+        }
         new_node = create_node(FUNCTION, current_token->line, current_token->value);
     }
     switch_token(1);
@@ -337,11 +381,30 @@ ast* parse_function(void){
     }
     if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
 
+    enum variable_type return_type = VAR_VOID;
+    if(accept(T_OPERATOR, ":")){
+        if(current_token->type != T_IDENTIFIER){
+            add_error_entry(ERROR, current_token->line, "Missing return type in function declaration");
+            return NULL;
+        }
+
+        return_type = check_type(current_token->value);
+        if(return_type == VAR_UNKOWN){
+            add_error_entry(ERROR, current_token->line, "Unknown type as return type");
+            return NULL;
+        }
+        switch_token(1);
+    }
+    ast *return_node = create_node(TYPE, current_token->line, "");
+    if(!return_node) return NULL;
+    return_node->resolved_type = return_type;
+    new_node->other = return_node;
+
     if(!expect(T_BRACKET_OPEN, "{")) return NULL;
 
     bool ok;
     ast *subtree = parse_body(&ok);
-    if(!subtree || !ok) return NULL;
+    if(!subtree && !ok) return NULL;
     new_node->right = subtree;
 
     if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
@@ -388,8 +451,9 @@ ast* parse_loop(bool for_loop){
 
     bool ok;
     ast *subtree = parse_body(&ok);
-    if(!subtree || !ok) return NULL;
-    new_node->right = subtree;
+    if(!subtree && !ok) return NULL;
+    if(!subtree) new_node->right = latch;
+    else new_node->right = subtree;
 
     // append latch at the end of subtree
     if(for_loop){
@@ -408,9 +472,26 @@ ast* parse_conditional(void){
 
     if(!expect(T_BRACKET_OPEN, "(")) return NULL;
 
-    ast *condition = parse_expression(0);
-    if(!condition) return NULL;
-    new_node->left = condition;
+    if(match(current_token, T_IDENTIFIER, "measure") || match(current_token, T_IDENTIFIER, "MEASURE") || match(current_token, T_IDENTIFIER, "mz") || match(current_token, T_IDENTIFIER, "MZ")){
+        switch_token(1);
+        if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+        if(current_token->type != T_IDENTIFIER){
+            add_error_entry(ERROR, current_token->line, "Expected Identifer as measure argument");
+            return NULL;
+        }
+
+        ast *m_node = create_node(MEASURE, current_token->line, current_token->value);
+        if(!m_node) return NULL;
+        new_node->left = m_node;
+        switch_token(1);
+
+        if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+    } else {
+        ast *condition = parse_expression(0);
+        if(!condition) return NULL;
+        new_node->left = condition;
+    }
 
     if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
 
@@ -418,7 +499,7 @@ ast* parse_conditional(void){
 
     bool ok;
     ast *if_body = parse_body(&ok);
-    if(!if_body || !ok) return NULL;
+    if(!if_body && !ok) return NULL;
     new_node->right = if_body;
 
     if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
@@ -456,30 +537,23 @@ ast* parse_measure(void){
 }
 
 ast* parse_return(void){
-    ast *new_node;
+    ast *new_node = create_node(RETURN, current_token->line, "return");
+    if(!new_node) return NULL;
     switch_token(1);
 
-    if(current_token->type == T_IDENTIFIER){
-        new_node = create_node(IDENTIFIER, current_token->line, current_token->value);
-        if(!new_node) return NULL;
-        switch_token(1);
-
-        return end_statement() ? new_node : NULL;
-    } else if(current_token->type == T_NUMBER){
-        new_node = create_node(VALUE, current_token->line, current_token->value);
-        if(!new_node) return NULL;
-        switch_token(1);
-
-        return end_statement() ? new_node : NULL;
-    } else {
-        add_error_entry(ERROR, current_token->line, "Expected Identifier or Number as return argument");
-        return NULL;
+    if(current_token->type != T_END_OF_LINE){
+        ast* expr_node = parse_expression(0);
+        if(!expr_node) return NULL;
+        new_node->left = expr_node;
     }
+
+    return end_statement() ? new_node : NULL;
 }
 
 ast* parse_assign(void){
     ast *new_node;
     if(check_type(current_token->value) != VAR_UNKOWN){
+        if(!check_keywords(look_forward(1)->value)) return NULL;
         new_node = create_node(ASSIGN, current_token->line, look_forward(2)->value);
         if(!new_node) return NULL;
         // creating name node for the new variable
@@ -488,6 +562,7 @@ ast* parse_assign(void){
 
         switch_token(3);
     } else {
+        if(!check_keywords(current_token->value)) return NULL;
         new_node = create_node(ASSIGN, current_token->line, look_forward(1)->value);
         if(!new_node) return NULL;
         // creating identifier node for assign
@@ -505,6 +580,7 @@ ast* parse_assign(void){
 
 ast* parse_declaration(void){
     // creating name node for the new variable
+    if(!check_keywords(look_forward(1)->value)) return NULL;
     ast *new_node = create_node(NAME, current_token->line, look_forward(1)->value);
     new_node->resolved_type = check_type(current_token->value);
 
@@ -630,7 +706,6 @@ ast* generate_ast(token *first_token){
         char message[40];
         snprintf(message, 40, "parse_start() exited with error code %d", res);
         add_error_entry(INTERNAL, current_token->line, message);
-        root = NULL;
     }
     check_errors();
     return root;

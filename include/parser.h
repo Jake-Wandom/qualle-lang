@@ -3,7 +3,6 @@
 
 #include "lexer.h"
 
-#include <llvm-c/Core.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -53,20 +52,20 @@ typedef struct abstract_syntax_tree{
     struct abstract_syntax_tree *other;
     
     char *value;
-
+    
     // line of the first token that was parsed to this node
     int line;
-
-    // This is for the analyser to fill in
+    
+    // relevant for the analyser
     enum variable_type resolved_type;
-    bool consumed;
-    LLVMValueRef *llvm;
+    int index; // index in the variable list
+    int res_id; // index in the result list
     
 } ast;
 
 // struct for determining the operation
 typedef struct {
-    const char *value;
+    char *value;
     int prec;
     bool right_assoc;
     int num_tokens;
