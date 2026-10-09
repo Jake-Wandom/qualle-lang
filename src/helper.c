@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 void print_man_page(void){
-    printf("quallcom [FLAGS] [FILE] ... [FILE]\n\nFLAGS:\n  -h or --help: print this page\n  -p: print information like file content, token lists and abstract syntax tree\n  -o: activate optimisations\n  -l: generates a readable .ll file instead of bitcode");
+    printf("quallcom [FLAGS] [FILE] ... [FILE]\n\nFLAGS:\n  -h or --help: print this page\n  -p or --print: print information like file content, token lists and abstract syntax tree\n  -a or --adaptive: compile to the adaptive QIR profile\n -o or --optimise: activate optimisations\n  -l: generates a readable .ll file instead of bitcode");
 }
 
 void zero_buffer(char* buffer, size_t size){
@@ -16,39 +16,44 @@ void printprefix(int level) {
         printf("|  ");
 }
 
+char* type_to_str(enum variable_type type){
+    char *str = "unknown";
+    switch(type){
+        case VAR_QUBIT:
+            str = "qubit";
+            break;
+        case VAR_BIT:
+            str = "bit";
+            break;
+        case VAR_VOID:
+            str = "void";
+            break;
+        case VAR_DOUBLE:
+            str = "double";
+            break;
+        case VAR_INTEGER:
+            str = "integer";
+            break;
+        case VAR_UINTEGER:
+            str = "unsigned integer";
+            break;
+        default:
+            break;
+    }
+    return str;
+}
+
 void print_ast(ast *root, int level){
     if (root == NULL) return;
     // print current level
+    while(root){
     if((level > 1) && (root->type != ROOT)) printprefix(level);
-    char *str = "unknown";
     switch(root->type){
         case ROOT:
             printf("├─> ROOT\n");
             break;
         case TYPE:
-            switch(root->resolved_type){
-                case VAR_QUBIT:
-                    str = "qubit";
-                    break;
-                case VAR_BIT:
-                    str = "bit";
-                    break;
-                case VAR_VOID:
-                    str = "void";
-                    break;
-                case VAR_DOUBLE:
-                    str = "double";
-                    break;
-                case VAR_INTEGER:
-                    str = "integer";
-                    break;
-                case VAR_UINTEGER:
-                    str = "natural";
-                    break;
-                default:
-                    break;
-            }
-            printf("├── TYPE: '%s'\n", str);
+            printf("├── TYPE: '%s'\n", type_to_str(root->resolved_type));
             break;
         case NAME:
             printf("├── NAME: '%s'\n",root->value);
@@ -63,16 +68,16 @@ void print_ast(ast *root, int level){
             printf("├── VALUE: '%s'\n", root->value);
             break;
         case ASSIGN:
-            printf("├── ASSIGN: '%c'\n", *(root->value));
+            printf("├── ASSIGN: '%s'\n", root->value);
             break;
         case BINOP:
-            printf("├── BINOP: '%c'\n", *(root->value));
+            printf("├── BINOP: '%s'\n", root->value);
             break;
         case BOOLOP:
-            printf("├── BOOLOP: '%c'\n", *(root->value));
+            printf("├── BOOLOP: '%s'\n", root->value);
             break;
         case UNOP:
-            printf("├── UNOP: '%c'\n", *(root->value));
+            printf("├── UNOP: '%s'\n", root->value);
             break;
         case CONDITIONAL:
             printf("├── IF: \n");
@@ -117,6 +122,7 @@ void print_ast(ast *root, int level){
             printprefix(level+1);
             printf("├─> Operand:\n");
             print_ast(root->left, level+1);
+            break;
         case FOR_LOOP:
             printprefix(level+1);
             printf("├─> Initialisation:\n");
@@ -124,6 +130,7 @@ void print_ast(ast *root, int level){
             printprefix(level+1);
             printf("├─> Condition:\n");
             print_ast(root->other, level+1);
+            printprefix(level+1);
             printf("├─> Body + Latch:\n");
             print_ast(root->right, level+1);
             break;
@@ -136,6 +143,9 @@ void print_ast(ast *root, int level){
             print_ast(root->right, level+1);
             break;
         case FUNCTION:
+            printprefix(level+1);
+            printf("├─> Return Type:\n");
+            print_ast(root->other, level+1);
             printprefix(level+1);
             printf("├─> Parameters:\n");
             print_ast(root->left, level+1);
@@ -150,6 +160,7 @@ void print_ast(ast *root, int level){
             printprefix(level+1);
             printf("├─> Body:\n");
             print_ast(root->right, level+1);
+            printprefix(level+1);
             printf("├─> Else:\n");
             print_ast(root->other, level+1);
             break;
@@ -167,7 +178,8 @@ void print_ast(ast *root, int level){
             break;
     }
 
-    print_ast(root->branch, level);
+    root = root->branch;
+    }
 }
 
 void print_token_list(token* first_token){
@@ -182,35 +194,35 @@ void print_token_list(token* first_token){
                 break;
             
             case T_END_OF_LINE:
-                printf("[EOL %c]\n", *(first_token->value));
+                printf("[EOL %s]\n", first_token->value);
                 break;
 
             case T_DELIMITER:
-                printf("[DEL %c]", *(first_token->value));
+                printf("[DEL %s]", first_token->value);
                 break;
 
             case T_COMMENT:
-                printf("[COM %c]", *(first_token->value));
+                printf("[COM %s]", first_token->value);
                 break;
 
             case T_BRACKET_CLOSE:
-                printf("[BC %c]", *(first_token->value));
+                printf("[BC %s]", first_token->value);
                 break;
 
             case T_BRACKET_OPEN:
-                printf("[BO %c]", *(first_token->value));
+                printf("[BO %s]", first_token->value);
                 break;
 
             case T_OPERATOR:
-                printf("[OP %c]", *(first_token->value));
+                printf("[OP %s]", first_token->value);
                 break;
 
             case T_START:
-                printf("\n[START]\n");
+                printf("[START]\n");
                 break;
 
             case T_END:
-                printf("[END]\n\n");
+                printf("[END]\n");
                 break;
             
             case T_UNKOWN:
@@ -229,30 +241,7 @@ void print_var_list(variable *var_list, size_t size){
     printf("\n");
     printf("SIZE: %lu\n", size);
     for(size_t i = 0; i < size; i++){
-        char *str = "unknown";
-            switch(var_list[i].type){
-                case VAR_QUBIT:
-                    str = "qubit";
-                    break;
-                case VAR_BIT:
-                    str = "bit";
-                    break;
-                case VAR_VOID:
-                    str = "void";
-                    break;
-                case VAR_DOUBLE:
-                    str = "double";
-                    break;
-                case VAR_INTEGER:
-                    str = "integer";
-                    break;
-                case VAR_UINTEGER:
-                    str = "natural";
-                    break;
-                default:
-                    break;
-            }
-        printf("Var %lu: %s '%s' = %s\n", i, str, var_list[i].name, var_list[i].value);
+        printf("Var %lu: %s '%s'\n", i, type_to_str(var_list[i].type), var_list[i].name);
     }
 }
 
@@ -277,14 +266,27 @@ void free_ast(ast *root){
         free_ast(root->other);
         free(root->value);
         free(root);
+        
+        root = next;
     }
 }
 
 void free_var_list(variable *var_list, size_t size){
     for(size_t i = 0; i < size; i++){
         free(var_list[i].name);
-        free(var_list[i].value);
-        free(var_list[i].llvm);
     }
     free(var_list);
+}
+
+void free_func_list(function *func_list, size_t size){
+    for(size_t i = 0; i < size; i++){
+        free(func_list[i].name);
+    }
+    free(func_list);
+}
+
+void free_context(context *ctx){
+    free_var_list(ctx->var_list, ctx->num_vars);
+    free_func_list(ctx->func_list, ctx->num_funcs);
+    free(ctx);
 }

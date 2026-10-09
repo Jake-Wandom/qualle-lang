@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 void print_man_page(void);
+char* type_to_str(enum variable_type type);
 void zero_buffer(char* buffer, size_t size);
 void print_ast(ast *root, int level);
 void print_token_list(token* first_token);
@@ -13,6 +14,7 @@ void print_var_list(variable *var_list, size_t size);
 void free_token_list(token* first_token);
 void free_ast(ast *root);
 void free_var_list(variable *var_list, size_t size);
+void free_context(context *ctx);
 
 
 #endif
