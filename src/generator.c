@@ -7,6 +7,7 @@
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/BitWriter.h>
+#include <llvm-c/Transforms/PassBuilder.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -17,6 +18,7 @@
 #define QIR_MINOR_VERSION 0
 
 bool ll = 0;
+bool optimisation = 0;
 
 // global context
 static context *ctx;
@@ -230,7 +232,7 @@ LLVMValueRef generate_expression(qir_context qir, ast *node){
             }
             break;
         case BOOLOP: {
-            enum variable_type common_type = type_check("+", node->left->resolved_type, node->right->resolved_type);
+            enum variable_type common_type = binop_type("+", node->left->resolved_type, node->right->resolved_type);
 
             LLVMValueRef left = coerce(qir, generate_expression(qir, node->left), node->left->resolved_type, common_type);
             LLVMValueRef right = coerce(qir, generate_expression(qir, node->right), node->right->resolved_type, common_type);
@@ -239,7 +241,7 @@ LLVMValueRef generate_expression(qir_context qir, ast *node){
             break;
             }
         case BINOP: {
-            enum variable_type common_type = type_check(node->value, node->left->resolved_type, node->right->resolved_type);
+            enum variable_type common_type = binop_type(node->value, node->left->resolved_type, node->right->resolved_type);
 
             LLVMValueRef left = coerce(qir, generate_expression(qir, node->left), node->left->resolved_type, common_type);
             LLVMValueRef right = coerce(qir, generate_expression(qir, node->right), node->right->resolved_type, common_type);
@@ -281,8 +283,10 @@ void generate_declare(qir_context qir, ast *node){
     if(node->resolved_type == VAR_QUBIT){
         qir.valref[node->index] = LLVMConstIntToPtr(LLVMConstInt(i64_type, (unsigned long long)ctx->var_list[node->index].qubit, 1), ptr_type);
     } else {
-        LLVMPositionBuilderBefore(qir.alloca_builder, LLVMGetBasicBlockTerminator(qir.entry_block));
-        qir.valref[node->index] = LLVMBuildAlloca(qir.alloca_builder, get_type(node->resolved_type), "");
+        LLVMBasicBlockRef last_block = LLVMGetInsertBlock(qir.builder);
+        LLVMPositionBuilderBefore(qir.builder, LLVMGetBasicBlockTerminator(qir.entry_block));
+        qir.valref[node->index] = LLVMBuildAlloca(qir.builder, get_type(node->resolved_type), "");
+        LLVMPositionBuilderAtEnd(qir.builder, last_block);
     }
 
     if(print) printf("NEW VAR %s\n",node->value);
@@ -295,18 +299,15 @@ void generate_assign(qir_context qir, ast *node){
 
     if(node->left->resolved_type == VAR_QUBIT){
         if(node->right->resolved_type == VAR_INTEGER && strcmp(node->right->value, "1") == 0){
-            LLVMPositionBuilderBefore(qir.alloca_builder, LLVMGetBasicBlockTerminator(qir.entry_block));
+            LLVMBasicBlockRef last_block = LLVMGetInsertBlock(qir.builder);
+            LLVMPositionBuilderBefore(qir.builder, LLVMGetBasicBlockTerminator(qir.entry_block));
 
-            // since emit_gate only takes the complete qir struct, we temporarily swap qir.builder and qir.alloca_builder
-            LLVMBuilderRef temp_builder = qir.builder;
-            qir.builder = qir.alloca_builder;
 
             LLVMValueRef args[1] = {qir.valref[node->left->index]};
             LLVMTypeRef param[1] = {ptr_type};
             emit_gate(qir, 1, args, param);
 
-            // restore qir builder
-            qir.builder = temp_builder;
+            LLVMPositionBuilderAtEnd(qir.builder, last_block);
         }
         return;
     }
@@ -342,7 +343,7 @@ void generate_call(qir_context qir, ast *node){
         LLVMValueRef args[fn.num_param];
         ast *current_node = node->left;
         for(int i = 0; i < fn.num_param; i++){
-            args[i] = qir.valref[current_node->index];
+            args[i] = generate_expression(qir, current_node);
             current_node = current_node->branch;
         }
 
@@ -461,20 +462,26 @@ void generate_function(qir_context qir, ast *node){
     qir.func_fn[node->index] = f_fn;
 
     // save context
-    LLVMBuilderRef og_builder = qir.builder;
-    qir.builder = f_builder;
     LLVMBasicBlockRef og_entry = qir.entry_block;
     qir.entry_block = f_entry;
-    LLVMBuilderRef og_abuilder = qir.alloca_builder;
-    qir.alloca_builder = f_abuilder;
+    LLVMBasicBlockRef last_block = LLVMGetInsertBlock(qir.builder);
+
     current_function = f_fn;
     
-    LLVMBuildBr(qir.builder, f_entry);
     LLVMPositionBuilderAtEnd(qir.builder, f_entry);
     
     current_node = node->left;
     for(int i = 0; i < ctx->func_list[node->index].num_param; i++){
-        generate_declare(qir, current_node);
+        if(current_node->index == -1){
+        add_error_entry(INTERNAL, node->line, "Unable to access index of variable");
+        return;
+        }
+        if(current_node->resolved_type == VAR_QUBIT){
+            qir.valref[current_node->index] = LLVMGetParam(f_fn, i);
+        } else {
+            qir.valref[current_node->index] = LLVMBuildAlloca(qir.builder, get_type(current_node->resolved_type), "");
+            LLVMBuildStore(qir.builder, LLVMGetParam(f_fn, i), qir.valref[current_node->index]);
+        }
         current_node = current_node->branch;
     }
 
@@ -489,9 +496,8 @@ void generate_function(qir_context qir, ast *node){
         LLVMBuildRet(qir.builder, LLVMConstInt(get_type(ctx->func_list[node->index].return_type), 0, 0));
     }
 
-    qir.builder = og_builder;
-    qir.alloca_builder = og_abuilder;
     qir.entry_block = og_entry;
+    LLVMPositionBuilderAtEnd(qir.builder, last_block);
     current_function = main_function;
     LLVMDisposeBuilder(f_builder);
     LLVMDisposeBuilder(f_abuilder);
@@ -560,7 +566,6 @@ FILE *generate_QIR(ast *root){
     qir.context = LLVMContextCreate();
     qir.module = LLVMModuleCreateWithNameInContext("QUALLE_module", qir.context);
     qir.builder = LLVMCreateBuilderInContext(qir.context);
-    qir.alloca_builder = LLVMCreateBuilderInContext(qir.context);
 
     i32_type = LLVMInt32TypeInContext(qir.context);
     i64_type = LLVMInt64TypeInContext(qir.context);
@@ -611,12 +616,8 @@ FILE *generate_QIR(ast *root){
 
     
     // build block structure
-    LLVMBasicBlockRef measure_block;
     qir.entry_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "entry");
     LLVMBasicBlockRef body_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "body");
-    if(!adaptive) measure_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "measure");
-    LLVMBasicBlockRef output_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "output");
-
 
     // entry block + init function
     LLVMPositionBuilderAtEnd(qir.builder, qir.entry_block);
@@ -630,11 +631,11 @@ FILE *generate_QIR(ast *root){
     if(print) printf("\nGENERATOR:\n");
     ast_walk(qir, root->branch);
 
-    if(!adaptive) LLVMBuildBr(qir.builder, measure_block);
-
     // measure block
     // this block is only used in a base profile program
     if(!adaptive){
+        LLVMBasicBlockRef measure_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "measure");
+        LLVMBuildBr(qir.builder, measure_block);
         LLVMPositionBuilderAtEnd(qir.builder, measure_block);
     
         for(int i = 0; i < ctx->num_results; i++){
@@ -643,6 +644,7 @@ FILE *generate_QIR(ast *root){
         }
     
     }
+    LLVMBasicBlockRef output_block = LLVMAppendBasicBlockInContext(qir.context, main_function, "output");
     LLVMBuildBr(qir.builder, output_block);
 
     // output block
@@ -764,7 +766,6 @@ FILE *generate_QIR(ast *root){
     free(qir.gate_fn);
 
     LLVMDisposeBuilder(qir.builder);
-    LLVMDisposeBuilder(qir.alloca_builder);
     LLVMDisposeModule(qir.module);
     LLVMContextDispose(qir.context);
 

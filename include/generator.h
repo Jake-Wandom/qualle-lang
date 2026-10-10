@@ -9,7 +9,6 @@ typedef struct {
     LLVMContextRef context;
     LLVMModuleRef module;
     LLVMBuilderRef builder;
-    LLVMBuilderRef alloca_builder;
 
     LLVMBasicBlockRef entry_block;
 
