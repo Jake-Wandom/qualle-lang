@@ -1,7 +1,7 @@
 # This is an example program that creates a bell state and measures it
-qubit q = 0;
-qubit b = 0;
-H(q);
-CNOT(q,b);
-measure(q);
-measure(b);
+qubit q1 = 0;
+qubit q2 = 0;
+H(q1);
+CNOT(q1,q2);
+measure(q1);
+measure(q2);
