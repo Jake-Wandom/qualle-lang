@@ -115,22 +115,22 @@ int add_func(context *ctx, function func){
     return ctx->num_funcs-1;
 }
 
-int lookup_gate(char *name){
-    if(!name) return -2;
-
-    for(size_t i = 0; i < NUM_GATES; i++){
-        if(strcmp(q_gates[i].gate_name, name) == 0){
-            return i;
-        }
+bool is_numeric(enum variable_type type){
+    switch(type){
+        case VAR_INTEGER:
+        case VAR_UINTEGER:
+        case VAR_DOUBLE:
+            return 1;
+        default:
+            return 0;
     }
-    return -1;
 }
 
 bool assignable_check(enum variable_type left, enum variable_type right, ast *node){
+    if(left == right) return 1;
     bool qubit_check = (node->type == VALUE && right == VAR_INTEGER && (strcmp(node->value, "0") == 0 || strcmp(node->value, "1") == 0));
     if(left == VAR_QUBIT) return qubit_check;
     if(left == VAR_BIT) return (right == VAR_BIT || qubit_check);
-    if(left == right) return 1;
 
     if(left == VAR_DOUBLE) return (right == VAR_INTEGER || right == VAR_UINTEGER);
     if(left == VAR_INTEGER) return (right == VAR_UINTEGER || right == VAR_BIT);
@@ -138,11 +138,11 @@ bool assignable_check(enum variable_type left, enum variable_type right, ast *no
     return 0;
 }
 
-enum variable_type type_check(char *op, enum variable_type type1, enum variable_type type2){
+enum variable_type binop_type(char *op, enum variable_type type1, enum variable_type type2){
     enum variable_type type = VAR_UNKOWN;
 
     if(strcmp("+", op) == 0 || strcmp("-", op) == 0 || strcmp("*", op) == 0 || strcmp("/", op) == 0){
-        if((type1 == VAR_INTEGER || type1 == VAR_UINTEGER || type1 == VAR_DOUBLE) && (type2 == VAR_INTEGER || type2 == VAR_UINTEGER || type2 == VAR_DOUBLE)){
+        if(is_numeric(type1) && is_numeric(type2)){
             if(type1 == VAR_DOUBLE || type2 == VAR_DOUBLE){
                 type = VAR_DOUBLE;
             } else if(type1 == VAR_INTEGER || type2 == VAR_INTEGER){
@@ -160,21 +160,21 @@ enum variable_type type_check(char *op, enum variable_type type1, enum variable_
             }
         }
     } else if(strcmp("^", op) == 0){
-        if((type1 == VAR_INTEGER || type1 == VAR_UINTEGER || type1 == VAR_DOUBLE) && (type2 == VAR_INTEGER || type2 == VAR_UINTEGER)){
-            if(type1 == VAR_DOUBLE || type2 == VAR_INTEGER){
+        if(is_numeric(type1) && (type2 == VAR_INTEGER || type2 == VAR_UINTEGER)){
+            if(type1 == VAR_DOUBLE){
                 type = VAR_DOUBLE;
-            } else if(type1 == VAR_INTEGER){
+            } else if(type1 == VAR_INTEGER || type2 == VAR_INTEGER){
                 type = VAR_INTEGER;
             } else {
                 type = VAR_UINTEGER;
             }
         }
     } else if(strcmp("<", op) == 0 || strcmp("<=", op) == 0 || strcmp(">", op) == 0 || strcmp(">=", op) == 0){
-        if((type1 == VAR_INTEGER || type1 == VAR_UINTEGER || type1 == VAR_DOUBLE) && (type2 == VAR_INTEGER || type2 == VAR_UINTEGER || type2 == VAR_DOUBLE)){
+        if(is_numeric(type1) && is_numeric(type1)){
             type = VAR_BIT;
         }
     } else if(strcmp("==", op) == 0 || strcmp("!=", op) == 0){
-        if((type1 == VAR_INTEGER || type1 == VAR_UINTEGER || type1 == VAR_DOUBLE) && (type2 == VAR_INTEGER || type2 == VAR_UINTEGER || type2 == VAR_DOUBLE)){
+        if(is_numeric(type1) && is_numeric(type1)){
             type = VAR_BIT;
         } else if(type1 == VAR_BIT && type2 == VAR_BIT){
             type = VAR_BIT;
@@ -211,17 +211,10 @@ enum variable_type analyse_expression(context *ctx, ast *node){
             type = ctx->var_list[pos].type;
             break;
         case UNOP:
-            /*
-            if(!ctx->adaptive){
-                add_error_entry(ERROR, node->line, "Operation not allowed in the QIR Base profile");
-                return type;
-            }
-            */
-
             res = analyse_expression(ctx, node->left);
             if(res == VAR_UNKOWN) break;
             if(node->value[0] == '-'){
-                if(res == VAR_INTEGER || res == VAR_UINTEGER || res == VAR_DOUBLE){
+                if(is_numeric(res)){
                     if(res == VAR_UINTEGER) type = VAR_INTEGER;
                     else type = res;
                 } else {
@@ -249,13 +242,13 @@ enum variable_type analyse_expression(context *ctx, ast *node){
             right = analyse_expression(ctx, node->right);
             if(left == VAR_UNKOWN || right == VAR_UNKOWN) break;
             if(left == VAR_QUBIT || right == VAR_QUBIT){
-                add_error_entry(ERROR, node->line, "Operations can not be performed on qubits");
+                add_error_entry(ERROR, node->line, "Operation can not be performed on qubits");
                 break;
             }
 
-            type = type_check(node->value, left, right);
+            type = binop_type(node->value, left, right);
             if(type == VAR_UNKOWN){
-                add_error_entry(ERROR, node->line, "Unable to apply operator");
+                add_error_entry(ERROR, node->line, "Operation contains incompatible types");
             }
             break;
         default:
@@ -283,9 +276,10 @@ void analyse_declare(context *ctx, ast *node){
         return;
     }
 
-    if(ctx->var_list[res].type == VAR_QUBIT && !ctx->in_function){
+    if(ctx->var_list[res].type == VAR_QUBIT){
         if(ctx->depth != 0){
             add_error_entry(ERROR, node->line, "qubits can only be declared in a global context");
+            return;
         }
         ctx->var_list[res].qubit = ctx->num_qubits;
         ctx->num_qubits++;
@@ -317,7 +311,11 @@ void analyse_assign(context *ctx, ast *node){
         node->left->index = pos;
         node->left->resolved_type = ctx->var_list[pos].type;
     }
+
     if(expr_type == VAR_UNKOWN) return;
+    if(node->left->resolved_type == VAR_QUBIT && expr_type == VAR_QUBIT){
+        add_error_entry(ERROR, node->line, "Copying a qubit is forbidden under the no-cloning theorem");
+    }
     if(!assignable_check(node->left->resolved_type, expr_type, node->right)){
         add_error_entry(ERROR, node->line, "Assign contains incompatible types");
     }
@@ -329,7 +327,7 @@ void analyse_call(context *ctx, ast *node){
 
     if(strcmp(node->value, "CNOT") == 0){
         free(node->value);
-        node->value = "CX";
+        node->value = strdup("CX");
     }
 
     int pos = lookup_gate(node->value);
@@ -346,6 +344,7 @@ void analyse_call(context *ctx, ast *node){
             param[i] = ctx->func_list[pos].param_types[i];
         }
         node->index = pos+NUM_GATES;
+        node->resolved_type = ctx->func_list[pos].return_type;
     } else {
         num_param = q_gates[pos].args;
         param = calloc(num_param, sizeof(enum variable_type));
@@ -353,6 +352,7 @@ void analyse_call(context *ctx, ast *node){
             param[i] = VAR_QUBIT;
         }
         node->index = pos;
+        node->resolved_type = VAR_VOID; 
     }
 
     ast *current_node = node->left;
@@ -364,9 +364,9 @@ void analyse_call(context *ctx, ast *node){
 
         analyse_expression(ctx, current_node);
     
-        if(!assignable_check(param[i], current_node->resolved_type, current_node) || (param[i] == VAR_QUBIT && current_node->type == VALUE)){
-            char message[58];
-            snprintf(message, 58, "%d. argument has the wrong type in function call", i+1);
+        if(!assignable_check(param[i], current_node->resolved_type, current_node)){
+            char message[63];
+            snprintf(message, 63, "%d. argument has an incompatible type in function call", i+1);
             add_error_entry(ERROR, current_node->line, message);
         }
 
@@ -466,7 +466,19 @@ void analyse_function(context *ctx, ast *node){
         if(current_node->type != NAME){
             add_error_entry(ERROR, current_node->line, "Function definition allows only variable declarations");
         } else {
-            analyse_declare(ctx, current_node);
+            int res = add_var(ctx, current_node);
+        
+            if(res < 0){
+                char message[38+strlen(current_node->value)];
+                snprintf(message, 38+strlen(current_node->value), "Variable with name %s already exists", current_node->value);
+                add_error_entry(ERROR, current_node->line, message);
+                return;
+            }
+
+            if(ctx->var_list[res].type == VAR_VOID){
+                add_error_entry(ERROR, current_node->line, "Void is an invalid type for variables");
+            }
+
             func.param_types[func.num_param++] = current_node->resolved_type;
         }
 
@@ -613,6 +625,7 @@ context* analyse_ast(ast *root){
     walk_ast(ctx, root->branch);
     check_errors();
 
+    if(print) print_ast(root, 1);
     if(print) print_var_list(ctx->var_list, ctx->num_vars);
 
     return ctx;

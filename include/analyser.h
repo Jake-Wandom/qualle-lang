@@ -48,7 +48,7 @@ typedef struct {
     bool measured, adaptive; 
 } context;
 
-enum variable_type type_check(char *op, enum variable_type type1, enum variable_type type2);
+enum variable_type binop_type(char *op, enum variable_type type1, enum variable_type type2);
 int lookup_func(context *ctx, char *name);
 void analyse_statement(context *ctx, ast *node);
 void walk_ast(context *ctx, ast *node);
