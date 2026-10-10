@@ -56,28 +56,28 @@ void print_ast(ast *root, int level){
             printf("├── TYPE: '%s'\n", type_to_str(root->resolved_type));
             break;
         case NAME:
-            printf("├── NAME: '%s'\n",root->value);
+            printf("├── NAME: '%s': %s\n",root->value, type_to_str(root->resolved_type));
             break;
         case IDENTIFIER:
-            printf("├── IDENTFIER: '%s'\n",root->value);
+            printf("├── IDENTFIER: '%s': %s\n",root->value, type_to_str(root->resolved_type));
             break;
         case CALL:
-            printf("├── CALL: '%s'\n",root->value);
+            printf("├── CALL: '%s': %s\n",root->value, type_to_str(root->resolved_type));
             break;
         case VALUE:
-            printf("├── VALUE: '%s'\n", root->value);
+            printf("├── VALUE: '%s': %s\n", root->value, type_to_str(root->resolved_type));
             break;
         case ASSIGN:
             printf("├── ASSIGN: '%s'\n", root->value);
             break;
         case BINOP:
-            printf("├── BINOP: '%s'\n", root->value);
+            printf("├── BINOP: '%s': %s\n", root->value, type_to_str(root->resolved_type));
             break;
         case BOOLOP:
-            printf("├── BOOLOP: '%s'\n", root->value);
+            printf("├── BOOLOP: '%s': %s\n", root->value, type_to_str(root->resolved_type));
             break;
         case UNOP:
-            printf("├── UNOP: '%s'\n", root->value);
+            printf("├── UNOP: '%s': %s\n", root->value, type_to_str(root->resolved_type));
             break;
         case CONDITIONAL:
             printf("├── IF: \n");
@@ -92,7 +92,7 @@ void print_ast(ast *root, int level){
             printf("├── INCLUDE: '%s'\n", root->value);
             break;
         case FUNCTION:
-            printf("├── FUNCTION: '%s'\n", root->value);
+            printf("├── FUNCTION: '%s': \n", root->value);
             break;
         case MEASURE:
             printf("├── MEASURE: '%s'\n", root->value);
