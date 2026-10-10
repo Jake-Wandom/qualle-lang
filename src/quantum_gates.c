@@ -1,5 +1,18 @@
 #include "quantum_gates.h"
 
+#include <string.h>
+
+int lookup_gate(char *name){
+    if(!name) return -2;
+
+    for(size_t i = 0; i < NUM_GATES; i++){
+        if(strcmp(q_gates[i].gate_name, name) == 0){
+            return i;
+        }
+    }
+    return -1;
+}
+
 // don't forget to edit the NUM_GATES define
 const gate q_gates[NUM_GATES] = {
     {"H", "__quantum__qis__h__body", 1, 0},

@@ -124,7 +124,7 @@ int main(int argc, char **argv){
         
         if(print) printf("PARSER PHASE:\n");
         ast *root = generate_ast(first_token);
-        if(print) print_ast(root, 1);
+        //if(print) print_ast(root, 1);
 
         if(print) printf("\n");
         

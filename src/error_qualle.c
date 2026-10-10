@@ -1,4 +1,6 @@
 #include "error_qualle.h"
+#include "global_flags.h"
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,7 +81,7 @@ void check_errors(){
         print_errors();
         memset(errors.entries, 0, sizeof(diagnose)*64);
     } else {
-        fprintf(stderr, "NO ERRORS DURING THE LAST PHASE :)\n");
+        if(print) fprintf(stderr, "NO ERRORS DURING THE LAST PHASE :)\n");
     }
 }
 
