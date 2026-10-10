@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "helper.h"
 #include "error_qualle.h"
 #include "global_flags.h"
 
@@ -13,7 +14,7 @@ static token *current_token;
 bool adaptive = 0;
 
 // reserved keywords list
-#define NUM_KEYWORDS 16
+#define NUM_KEYWORDS 46
 static const char *keywords[] = {
     "def",
     "if",
@@ -27,11 +28,40 @@ static const char *keywords[] = {
     "return",
     "qubit",
     "bit",
+    "bool",
     "int",
     "uint",
     "double",
     "void",
-    "main"
+    "main",
+    "=",
+    "==",
+    "!",
+    "!=",
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "^",
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "&&",
+    "||",
+    "?",
+    ":",
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    ",",
+    ".",
+    ";",
+    " "
 };
 /*
 creates a new node with all pointer values set to NULL
@@ -49,6 +79,7 @@ ast* create_node(enum ast_type type, int line, char *value){
     new_node->right = NULL;
     new_node->other = NULL;
     new_node->value = strdup(value);
+    new_node->resolved_type = VAR_UNKOWN;
     new_node->line = line;
     new_node->index = -1;
     new_node->res_id = -1;
@@ -138,7 +169,9 @@ static bool end_statement(void){
 static bool check_keywords(char *name){
     for(int i = 0; i < NUM_KEYWORDS; i++){
         if(strcmp(keywords[i], name) == 0){
-            add_error_entry(ERROR, current_token->line, "Name overlaps with QUALLE keyword");
+            char message[30];
+            snprintf(message, 30, "%s is an invalid name", name);
+            add_error_entry(ERROR, current_token->line, message);
             return 0;
         }
     }
@@ -216,6 +249,8 @@ enum variable_type check_type(char *name){
         type = VAR_QUBIT;
     } else if(strcmp(name, "bit") == 0){
         type = VAR_BIT;
+    } else if(strcmp(name, "bool") == 0){
+        type = VAR_BIT;
     } else if(strcmp(name, "int") == 0){
         type = VAR_INTEGER;
     } else if(strcmp(name, "uint") == 0){
@@ -236,8 +271,11 @@ ast* parse_primary(void){
         enum variable_type type = VAR_INTEGER;
         if(strchr(tok->value, '.') != NULL){
             type = VAR_DOUBLE;
+            if(strchr(tok->value, '.') != NULL){
+                add_error_entry(ERROR, tok->line, "Double has multiple decimal points");
+                return NULL;
+            }
         }
-
 
         ast *new_node = create_node(VALUE, tok->line, tok->value);
         if(!new_node) return NULL;
@@ -395,7 +433,7 @@ ast* parse_function(void){
         }
         switch_token(1);
     }
-    ast *return_node = create_node(TYPE, current_token->line, "");
+    ast *return_node = create_node(TYPE, current_token->line, "return");
     if(!return_node) return NULL;
     return_node->resolved_type = return_type;
     new_node->other = return_node;
@@ -554,6 +592,7 @@ ast* parse_assign(void){
     ast *new_node;
     if(check_type(current_token->value) != VAR_UNKOWN){
         if(!check_keywords(look_forward(1)->value)) return NULL;
+
         new_node = create_node(ASSIGN, current_token->line, look_forward(2)->value);
         if(!new_node) return NULL;
         // creating name node for the new variable
@@ -563,6 +602,7 @@ ast* parse_assign(void){
         switch_token(3);
     } else {
         if(!check_keywords(current_token->value)) return NULL;
+
         new_node = create_node(ASSIGN, current_token->line, look_forward(1)->value);
         if(!new_node) return NULL;
         // creating identifier node for assign
@@ -697,7 +737,7 @@ this is the access function for main
 it resets the global variables
 */
 ast* generate_ast(token *first_token){
-    ast *root = create_node(ROOT, 0, "");
+    ast *root = create_node(ROOT, 0, "root");
     current_token = first_token;
 
     int res = parse_start(root);
@@ -706,6 +746,7 @@ ast* generate_ast(token *first_token){
         char message[40];
         snprintf(message, 40, "parse_start() exited with error code %d", res);
         add_error_entry(INTERNAL, current_token->line, message);
+        free_ast(root);
     }
     check_errors();
     return root;
