@@ -452,7 +452,7 @@ ast* parse_function(void){
 
 ast* parse_loop(bool for_loop){
     ast *new_node;
-    ast *latch;
+    ast *latch = NULL;
     if(for_loop){
         new_node = create_node(FOR_LOOP, current_token->line, "for");
         switch_token(1);

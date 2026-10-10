@@ -9,8 +9,6 @@
 #include <stdbool.h>
 
 // ll and print have been declared in the generator and analyser
-bool optimisation = 0;
-
 int main(int argc, char **argv){
     //char stdlib_path[] = "include/stdlib.ql";
 
