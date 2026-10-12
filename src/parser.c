@@ -265,33 +265,69 @@ enum variable_type check_type(char *name){
 }
 
 ast* parse_primary(void){
-    token *tok = current_token;
 
-    if(tok->type == T_NUMBER){
-        enum variable_type type = VAR_INTEGER;
-        if(strchr(tok->value, '.') != NULL){
-            type = VAR_DOUBLE;
-            if(strchr(tok->value, '.') != NULL){
-                add_error_entry(ERROR, tok->line, "Double has multiple decimal points");
-                return NULL;
-            }
+    if(match(current_token, T_IDENTIFIER, "measure") || match(current_token, T_IDENTIFIER, "MEASURE") || match(current_token, T_IDENTIFIER, "mz") || match(current_token, T_IDENTIFIER, "MZ")){
+        switch_token(1);
+        if(!expect(T_BRACKET_OPEN, "(")) return NULL;
+
+        if(current_token->type != T_IDENTIFIER){
+            add_error_entry(ERROR, current_token->line, "Expected Identifer as measure argument");
+            return NULL;
         }
 
-        ast *new_node = create_node(VALUE, tok->line, tok->value);
+        ast *m_node = create_node(MEASURE, current_token->line, current_token->value);
+        if(!m_node) return NULL;
+        switch_token(1);
+        if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+
+        return m_node;
+    }
+
+    if(current_token->type == T_IDENTIFIER && match(look_forward(1), T_BRACKET_OPEN, "(")){
+        ast *new_node = create_node(CALL, current_token->line, current_token->value);
+        if(!new_node) return NULL;
+        
+        switch_token(2);
+        
+        ast **tail = &new_node->left;
+        if(!match(current_token, T_BRACKET_CLOSE, ")")){
+            do {
+                ast *arg = parse_expression(0);
+                if(!arg) return NULL;
+    
+                *tail = arg;
+                tail = &arg->branch;
+            } while(accept(T_DELIMITER, ","));
+        }
+        if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
+        
+        return new_node;
+    }
+
+
+    if(current_token->type == T_NUMBER){
+        enum variable_type type = VAR_INTEGER;
+        if(strchr(current_token->value, '.') != NULL){
+            type = VAR_DOUBLE;
+        }
+
+        ast *new_node = create_node(VALUE, current_token->line, current_token->value);
         if(!new_node) return NULL;
         new_node->resolved_type = type;
         
         switch_token(1);
         return new_node;
     }
-    if(tok->type == T_IDENTIFIER){
-        ast *new_node = create_node(IDENTIFIER, tok->line, tok->value);
+
+    if(current_token->type == T_IDENTIFIER){
+        ast *new_node = create_node(IDENTIFIER, current_token->line, current_token->value);
         if(!new_node) return NULL;
 
         switch_token(1);
         return new_node;
     }
-    if(match(tok, T_BRACKET_OPEN, "(")){
+
+    if(match(current_token, T_BRACKET_OPEN, "(")){
         switch_token(1);
         ast *inner = parse_expression(0);
         if(!inner || !expect(T_BRACKET_CLOSE, ")")) return NULL;
@@ -299,7 +335,7 @@ ast* parse_primary(void){
         return inner;
     }
 
-    add_error_entry(ERROR, tok->line, "Expected value or variable");
+    add_error_entry(ERROR, current_token->line, "Expected value or variable");
     return NULL;
 }
 
@@ -510,26 +546,9 @@ ast* parse_conditional(void){
 
     if(!expect(T_BRACKET_OPEN, "(")) return NULL;
 
-    if(match(current_token, T_IDENTIFIER, "measure") || match(current_token, T_IDENTIFIER, "MEASURE") || match(current_token, T_IDENTIFIER, "mz") || match(current_token, T_IDENTIFIER, "MZ")){
-        switch_token(1);
-        if(!expect(T_BRACKET_OPEN, "(")) return NULL;
-
-        if(current_token->type != T_IDENTIFIER){
-            add_error_entry(ERROR, current_token->line, "Expected Identifer as measure argument");
-            return NULL;
-        }
-
-        ast *m_node = create_node(MEASURE, current_token->line, current_token->value);
-        if(!m_node) return NULL;
-        new_node->left = m_node;
-        switch_token(1);
-
-        if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
-    } else {
-        ast *condition = parse_expression(0);
-        if(!condition) return NULL;
-        new_node->left = condition;
-    }
+    ast *condition = parse_expression(0);
+    if(!condition) return NULL;
+    new_node->left = condition;
 
     if(!expect(T_BRACKET_CLOSE, ")")) return NULL;
 
@@ -588,17 +607,26 @@ ast* parse_return(void){
     return end_statement() ? new_node : NULL;
 }
 
+ast* parse_declaration(void){
+    // creating name node for the new variable
+    if(!check_keywords(look_forward(1)->value)) return NULL;
+    ast *new_node = create_node(NAME, current_token->line, look_forward(1)->value);
+    new_node->resolved_type = check_type(current_token->value);
+
+    switch_token(2);
+
+    return end_statement() ? new_node : NULL;
+}
+
 ast* parse_assign(void){
     ast *new_node;
     if(check_type(current_token->value) != VAR_UNKOWN){
-        if(!check_keywords(look_forward(1)->value)) return NULL;
-
         new_node = create_node(ASSIGN, current_token->line, look_forward(2)->value);
         if(!new_node) return NULL;
         // creating name node for the new variable
+        if(!check_keywords(look_forward(1)->value)) return NULL;
         new_node->left = create_node(NAME, current_token->line, look_forward(1)->value);
         new_node->left->resolved_type = check_type(current_token->value);
-
         switch_token(3);
     } else {
         if(!check_keywords(current_token->value)) return NULL;
@@ -618,16 +646,6 @@ ast* parse_assign(void){
     return end_statement() ? new_node : NULL;
 }
 
-ast* parse_declaration(void){
-    // creating name node for the new variable
-    if(!check_keywords(look_forward(1)->value)) return NULL;
-    ast *new_node = create_node(NAME, current_token->line, look_forward(1)->value);
-    new_node->resolved_type = check_type(current_token->value);
-
-    switch_token(2);
-
-    return end_statement() ? new_node : NULL;
-}
 
 ast* parse_call(void){ 
     ast *new_node = create_node(CALL, current_token->line, current_token->value);

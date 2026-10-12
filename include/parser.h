@@ -14,6 +14,7 @@ enum variable_type {
     VAR_UINTEGER,
     VAR_DOUBLE,
     VAR_VOID,
+    VAR_ARRAY,
     VAR_UNKOWN
 };
 
