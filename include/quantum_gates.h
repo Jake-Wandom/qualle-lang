@@ -3,7 +3,7 @@
 
 #include <llvm-c/Core.h>
 
-#define NUM_GATES 16
+#define NUM_GATES 17
 
 typedef struct {
     const char *gate_name, *qir_name;
