@@ -1,4 +1,4 @@
-# This program just defines 3 variables
+# This program just defines variables
 qubit q = 0;
 qubit qu = 1;
 

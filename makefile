@@ -99,6 +99,9 @@ venv:
 	python3 src/python/main.py; \
 	deactivate; \
 	)
+.PHONY: test
+test:
+	./testing.sh
 
 # Directory Creation
 $(BIN_DIR) $(OBJ_DIR) $(DEP_DIR):
