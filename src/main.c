@@ -11,7 +11,7 @@
 // ll and print have been declared in the generator and analyser
 int main(int argc, char **argv){
     //char stdlib_path[] = "include/stdlib.ql";
-
+    printf("Compiling ");
     // first we process all input args: flags and files
     // num_of_files and files contain all file pointers to file names from argv
     int return_value = 0;
@@ -75,8 +75,10 @@ int main(int argc, char **argv){
                 return_value = 2;
                 goto end;
             }
+            printf("%s ", argv[i]);
         }
     }
+    printf("\n");
 
     if(num_of_files == 0){
         fprintf(stderr, "No input files to compile\n");
@@ -102,7 +104,6 @@ int main(int argc, char **argv){
 
     // now we process all files into token streams
     main_buffer = calloc(buffer_size, sizeof(char));
-    token* first_token;
 
     init_errors();
 
@@ -115,20 +116,36 @@ int main(int argc, char **argv){
         if(print) printf("\n\n");
 
         if(print) printf("LEXER PHASE:\n");
-        first_token = get_token(main_buffer);
+        token *first_token = get_token(main_buffer);
+        if(!first_token){
+            free_token_list(first_token);
+            return_value = 3;
+            goto end;
+        }
+        
         if(print) print_token_list(first_token);
         
         if(print) printf("\n");
         
         if(print) printf("PARSER PHASE:\n");
         ast *root = generate_ast(first_token);
-        //if(print) print_ast(root, 1);
+        if(!root){
+            free_token_list(first_token);
+            return_value = 3;
+            goto end;
+        }
 
         if(print) printf("\n");
         
         // call to generator
         // the generator calls the analyser itself
-        generate_QIR(root);
+        FILE *f = generate_QIR(root);
+        if(!f){
+            free_token_list(first_token);
+            free_ast(root);
+            return_value = 4;
+            goto end;
+        }
 
         if(print) printf("\n\n");
         
@@ -139,6 +156,7 @@ int main(int argc, char **argv){
         free_ast(root);
     }
 
+    end:
     // close all files and free all pointers
     for(int i = 0; i < num_of_files; i++){
         if(files[i] == NULL){
@@ -148,7 +166,6 @@ int main(int argc, char **argv){
         fclose(files[i]);
     }
 
-    end:
     free(files);
     free(main_buffer);
     free(line_buffer);
