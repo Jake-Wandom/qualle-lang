@@ -130,11 +130,11 @@ bool assignable_check(enum variable_type left, enum variable_type right, ast *no
     if(left == right) return 1;
     bool qubit_check = (node->type == VALUE && right == VAR_INTEGER && (strcmp(node->value, "0") == 0 || strcmp(node->value, "1") == 0));
     if(left == VAR_QUBIT) return qubit_check;
-    if(left == VAR_BIT) return (right == VAR_BIT || qubit_check);
+    if(left == VAR_BIT) return qubit_check;
 
-    if(left == VAR_DOUBLE) return (right == VAR_INTEGER || right == VAR_UINTEGER);
+    if(left == VAR_DOUBLE) return (right == VAR_INTEGER || right == VAR_UINTEGER || right == VAR_BIT);
     if(left == VAR_INTEGER) return (right == VAR_UINTEGER || right == VAR_BIT);
-    if(left == VAR_UINTEGER) return (right == VAR_INTEGER && node->type == VALUE);
+    if(left == VAR_UINTEGER) return ((right == VAR_INTEGER && node->type == VALUE) || VAR_BIT);
     return 0;
 }
 
@@ -161,9 +161,9 @@ enum variable_type binop_type(char *op, enum variable_type type1, enum variable_
         }
     } else if(strcmp("^", op) == 0){
         if(is_numeric(type1) && (type2 == VAR_INTEGER || type2 == VAR_UINTEGER)){
-            if(type1 == VAR_DOUBLE){
+            if(type1 == VAR_DOUBLE || type2 == VAR_INTEGER){
                 type = VAR_DOUBLE;
-            } else if(type1 == VAR_INTEGER || type2 == VAR_INTEGER){
+            } else if(type1 == VAR_INTEGER){
                 type = VAR_INTEGER;
             } else {
                 type = VAR_UINTEGER;
@@ -250,6 +250,12 @@ enum variable_type analyse_expression(context *ctx, ast *node){
             if(type == VAR_UNKOWN){
                 add_error_entry(ERROR, node->line, "Operation contains incompatible types");
             }
+            break;
+        case MEASURE:
+            analyse_measure(ctx, node);
+            break;
+        case CALL:
+            analyse_call(ctx, node);
             break;
         default:
             add_error_entry(ERROR, node->line, "Expected expression");
@@ -391,7 +397,7 @@ void analyse_measure(context *ctx, ast *node){
 
     node->index = pos;
     node->res_id = ctx->num_results;
-    node->resolved_type = VAR_QUBIT;
+    node->resolved_type = VAR_BIT;
 
     ctx->var_list[pos].consumed = 1;
     ctx->num_results++;

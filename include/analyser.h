@@ -51,6 +51,8 @@ typedef struct {
 enum variable_type binop_type(char *op, enum variable_type type1, enum variable_type type2);
 int lookup_func(context *ctx, char *name);
 void analyse_statement(context *ctx, ast *node);
+void analyse_call(context *ctx, ast *node);
+void analyse_measure(context *ctx, ast *node);
 void walk_ast(context *ctx, ast *node);
 context* analyse_ast(ast *root);
 
