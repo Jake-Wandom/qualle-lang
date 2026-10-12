@@ -23,6 +23,7 @@ typedef struct {
 } qir_context;
 
 void generate_statement(qir_context *qir, ast *node);
+void generate_measure(qir_context *qir, ast *node);
 void ast_walk(qir_context *qir, ast *node);
 FILE *generate_QIR(ast *root);
 

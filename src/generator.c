@@ -113,7 +113,7 @@ LLVMValueRef coerce(qir_context *qir, LLVMValueRef val, enum variable_type old_t
     }
     if(new_type == VAR_BIT){
         LLVMBool is_signed = 0;
-        if(old_type == VAR_INTEGER) is_signed = 1;
+        if(old_type == VAR_INTEGER || old_type == VAR_DOUBLE) is_signed = 1;
         return LLVMBuildIntCast2(qir->builder, val, get_type(new_type), is_signed, "");
     }
     return val;
@@ -268,6 +268,45 @@ LLVMValueRef generate_expression(qir_context *qir, ast *node){
             }
             ret = LLVMConstInt(i64_type, strtol(node->value, NULL, 10), 1);
             break;
+        case MEASURE:
+            generate_measure(qir, node);
+            LLVMValueRef read_args[1] = { LLVMConstIntToPtr(LLVMConstInt(i64_type, (unsigned long long)node->res_id, 1), ptr_type)};
+            ret = LLVMBuildCall2(qir->builder, read_res_type, read_res_function, read_args, 1, "");
+            if(print) printf("MEASUREMENT with %s\n",node->value);
+            break;
+        case CALL:
+            if(node->index < NUM_GATES){ // gate call
+                gate call_gate = q_gates[node->index];
+
+                LLVMTypeRef param[call_gate.args];
+                ast *current_node = node->left;
+                for(int i = 0; i < call_gate.args; i++){
+                    param[i] = get_type(current_node->resolved_type);
+                    current_node = current_node->branch;
+                }
+
+                LLVMValueRef args[call_gate.args];
+                current_node = node->left;
+                for(int i = 0; i < call_gate.args; i++){
+                    args[i] = qir->valref[current_node->index];
+                    current_node = current_node->branch;
+                }
+
+                emit_gate(qir, node->index, args, param);
+                
+            } else { // custom func call
+                function fn = ctx->func_list[node->index-NUM_GATES];
+                LLVMValueRef args[fn.num_param];
+                ast *current_node = node->left;
+                for(int i = 0; i < fn.num_param; i++){
+                    args[i] = generate_expression(qir, current_node);
+                    current_node = current_node->branch;
+                }
+
+                ret = LLVMBuildCall2(qir->builder, qir->func_type[node->index-NUM_GATES], qir->func_fn[node->index-NUM_GATES], args, fn.num_param, "");
+            }
+            if(print) printf("%s CALL\n", node->value);
+            break;
         default:
             break;
     }
@@ -313,9 +352,13 @@ void generate_assign(qir_context *qir, ast *node){
     }
 
     LLVMValueRef res = generate_expression(qir, node->right);
-    if(res == 0) return;
-
+    if(res == 0){
+        printf("UNABLE TO ASSIGN\n");
+        return;
+    }
+    
     LLVMBuildStore(qir->builder, res, qir->valref[node->left->index]);
+    if(print) printf("ASSIGN\n");
 }
 
 void generate_call(qir_context *qir, ast *node){
@@ -604,7 +647,7 @@ FILE *generate_QIR(ast *root){
     measure_function = LLVMAddFunction(qir->module, "__quantum__qis__mz__body", measure_type);
 
     read_res_type = LLVMFunctionType(i1_type, one_param, 1, 0);
-    read_res_function = LLVMAddFunction(qir->module, "__quantum__rt__read__result", read_res_type);
+    read_res_function = LLVMAddFunction(qir->module, "__quantum__rt__read_result", read_res_type);
 
     // record output
     LLVMTypeRef result_type = LLVMFunctionType(void_type, two_param, 2, 0);
