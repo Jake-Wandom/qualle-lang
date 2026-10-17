@@ -15,7 +15,7 @@
 #include <math.h>
 
 #define QIR_MAJOR_VERSION 2
-#define QIR_MINOR_VERSION 0
+#define QIR_MINOR_VERSION 1
 
 bool ll = 0;
 bool optimisation = 0;
@@ -37,6 +37,17 @@ static LLVMTypeRef read_res_type;
 static LLVMValueRef read_res_function;
 static LLVMTypeRef main_type;
 static LLVMValueRef main_function;
+
+static LLVMTypeRef qubit_allocate_type;
+static LLVMValueRef qubit_allocate_function;
+static LLVMTypeRef result_allocate_type;
+static LLVMValueRef result_allocate_function;
+static LLVMTypeRef qubit_release_type;
+static LLVMValueRef qubit_release_function;
+static LLVMTypeRef result_release_type;
+static LLVMValueRef result_release_function;
+
+static LLVMValueRef out_err;
 
 // global variable for the current function
 static LLVMValueRef current_function;
@@ -320,7 +331,11 @@ void generate_declare(qir_context *qir, ast *node){
         return;
     }
     if(node->resolved_type == VAR_QUBIT){
-        qir->valref[node->index] = LLVMConstIntToPtr(LLVMConstInt(i64_type, (unsigned long long)ctx->var_list[node->index].qubit, 1), ptr_type);
+        if(!adaptive){
+            qir->valref[node->index] = LLVMConstIntToPtr(LLVMConstInt(i64_type, (unsigned long long)ctx->var_list[node->index].qubit, 1), ptr_type);
+        } else {
+            qir->valref[node->index] = LLVMBuildCall2(qir->builder, qubit_allocate_type, qubit_allocate_function, NULL, 0, "");
+        }
     } else {
         LLVMBasicBlockRef last_block = LLVMGetInsertBlock(qir->builder);
         LLVMPositionBuilderBefore(qir->builder, LLVMGetBasicBlockTerminator(qir->entry_block));
@@ -364,18 +379,18 @@ void generate_assign(qir_context *qir, ast *node){
 void generate_call(qir_context *qir, ast *node){
     if(node->index < NUM_GATES){ // gate call
         gate call_gate = q_gates[node->index];
-
-        LLVMTypeRef param[call_gate.args];
+        int num_param = call_gate.args+call_gate.angles;
+        LLVMTypeRef param[num_param];
+        LLVMValueRef args[num_param];
         ast *current_node = node->left;
-        for(int i = 0; i < call_gate.args; i++){
+        for(int i = 0; i < num_param; i++){
             param[i] = get_type(current_node->resolved_type);
-            current_node = current_node->branch;
-        }
 
-        LLVMValueRef args[call_gate.args];
-        current_node = node->left;
-        for(int i = 0; i < call_gate.args; i++){
-            args[i] = qir->valref[current_node->index];
+            if(i < call_gate.angles){
+                args[i] = generate_expression(qir, current_node);
+            } else {
+                args[i] = qir->valref[current_node->index];
+            }
             current_node = current_node->branch;
         }
 
@@ -503,13 +518,15 @@ void generate_function(qir_context *qir, ast *node){
 
     qir->func_type[node->index] = f_type;
     qir->func_fn[node->index] = f_fn;
-
+    
     // save context
     LLVMBasicBlockRef og_entry = qir->entry_block;
     qir->entry_block = f_entry;
     LLVMBasicBlockRef last_block = LLVMGetInsertBlock(qir->builder);
-
+    bool og_returned = qir->returned;
+    
     current_function = f_fn;
+    qir->returned = 0;
     
     LLVMPositionBuilderAtEnd(qir->builder, f_entry);
     
@@ -533,13 +550,16 @@ void generate_function(qir_context *qir, ast *node){
 
     ast_walk(qir, node->right);
 
-    if(ctx->func_list[node->index].return_type == VAR_VOID){
-        LLVMBuildRetVoid(qir->builder);
-    } else {
-        LLVMBuildRet(qir->builder, LLVMConstInt(get_type(ctx->func_list[node->index].return_type), 0, 0));
+    if(!qir->returned){
+        if(ctx->func_list[node->index].return_type == VAR_VOID){
+            LLVMBuildRetVoid(qir->builder);
+        } else {
+            LLVMBuildRet(qir->builder, LLVMConstInt(get_type(ctx->func_list[node->index].return_type), 0, 0));
+        }
     }
 
     qir->entry_block = og_entry;
+    qir->returned = og_returned;
     LLVMPositionBuilderAtEnd(qir->builder, last_block);
     current_function = main_function;
     LLVMDisposeBuilder(f_builder);
@@ -547,6 +567,7 @@ void generate_function(qir_context *qir, ast *node){
 }
 
 void generate_return(qir_context *qir, ast *node){
+    qir->returned = 1;
     if(node->left == NULL){
         LLVMBuildRetVoid(qir->builder);
     } else {
@@ -635,6 +656,7 @@ FILE *generate_QIR(ast *root){
     qir->func_fn = calloc(ctx->num_funcs, sizeof(LLVMValueRef));
     qir->gate_type = calloc(NUM_GATES, sizeof(LLVMTypeRef));
     qir->gate_fn = calloc(NUM_GATES, sizeof(LLVMValueRef));
+    qir->returned = 0;
 
     // define basic functions
     // main function
@@ -657,6 +679,19 @@ FILE *generate_QIR(ast *root){
     LLVMTypeRef init_type = LLVMFunctionType(void_type, one_param, 1, 0);
     LLVMValueRef init_function = LLVMAddFunction(qir->module, "__quantum__rt__initialize", init_type);
 
+    // allocation functions
+    if(adaptive){
+        qubit_allocate_type = LLVMFunctionType(ptr_type, NULL, 0, 0);
+        qubit_allocate_function = LLVMAddFunction(qir->module, "__quantum__rt__qubit_allocate", qubit_allocate_type);
+        result_allocate_type = LLVMFunctionType(ptr_type, one_param, 1, 0);
+        result_allocate_function = LLVMAddFunction(qir->module, "__quantum__rt__result_allocate", result_allocate_type);
+
+        qubit_release_type = LLVMFunctionType(void_type, one_param, 1, 0);
+        qubit_release_function = LLVMAddFunction(qir->module, "__quantum__rt__qubit_release", qubit_release_type);
+        result_release_type = LLVMFunctionType(void_type, one_param, 1, 0);
+        result_release_function = LLVMAddFunction(qir->module, "__quantum__rt__result_release", result_release_type);
+    }
+
     
     // build block structure
     qir->entry_block = LLVMAppendBasicBlockInContext(qir->context, main_function, "entry");
@@ -666,6 +701,7 @@ FILE *generate_QIR(ast *root){
     LLVMPositionBuilderAtEnd(qir->builder, qir->entry_block);
     LLVMValueRef init_args[1] = { LLVMConstNull(ptr_type) };
     LLVMBuildCall2(qir->builder, init_type, init_function, init_args, 1, "");
+    out_err = LLVMConstPointerNull(ptr_type);
     LLVMBuildBr(qir->builder, body_block);
 
     // body block + generate instructions
@@ -687,21 +723,24 @@ FILE *generate_QIR(ast *root){
         }
     
     }
-    LLVMBasicBlockRef output_block = LLVMAppendBasicBlockInContext(qir->context, main_function, "output");
-    LLVMBuildBr(qir->builder, output_block);
 
-    // output block
-    LLVMPositionBuilderAtEnd(qir->builder, output_block);
-    
-    for(int i = 0; i < ctx->num_results; i++){
-        LLVMValueRef label = make_label(qir, i);
-        LLVMValueRef rs_args[2] = { LLVMConstIntToPtr(LLVMConstInt(i64_type, (unsigned long long)i, 1), ptr_type), label};
+    if(ctx->num_results > 0){
+        LLVMBasicBlockRef output_block = LLVMAppendBasicBlockInContext(qir->context, main_function, "output");
+        LLVMBuildBr(qir->builder, output_block);
 
-        LLVMBuildCall2(qir->builder, result_type, result_function, rs_args, 2, "");
+        // output block
+        LLVMPositionBuilderAtEnd(qir->builder, output_block);
+        
+        for(int i = 0; i < ctx->num_results; i++){
+            LLVMValueRef label = make_label(qir, i);
+            LLVMValueRef rs_args[2] = { LLVMConstIntToPtr(LLVMConstInt(i64_type, (unsigned long long)i, 1), ptr_type), label};
+
+            LLVMBuildCall2(qir->builder, result_type, result_function, rs_args, 2, "");
+        }
     }
     
     // return 0
-    LLVMBuildRet(qir->builder, LLVMConstInt(i64_type, 0, 0));
+    if(!qir->returned) LLVMBuildRet(qir->builder, LLVMConstInt(i64_type, 0, 0));
 
     // convert the number of qubits and results to strings
     int len_qubits = floor(log10(ctx->num_qubits)) + 1; // this calculates the number of chars
@@ -717,18 +756,23 @@ FILE *generate_QIR(ast *root){
 
     // define all attributes
     LLVMAttributeRef entryAttribute = LLVMCreateStringAttribute(qir->context, "entry_point", 11, "", 0);
+    LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, entryAttribute);
+
     LLVMAttributeRef labelingAttribute = LLVMCreateStringAttribute(qir->context, "output_labeling_schema", 22, "", 0);
-    LLVMAttributeRef qubitsAttribute = LLVMCreateStringAttribute(qir->context, "required_num_qubits", 19, str_qubits, len_qubits);
-    LLVMAttributeRef resultsAttribute = LLVMCreateStringAttribute(qir->context, "required_num_results", 20, str_results, len_results);
+    LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, labelingAttribute);
+
+    if(!adaptive){
+        LLVMAttributeRef qubitsAttribute = LLVMCreateStringAttribute(qir->context, "required_num_qubits", 19, str_qubits, len_qubits);
+        LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, qubitsAttribute);
+        LLVMAttributeRef resultsAttribute = LLVMCreateStringAttribute(qir->context, "required_num_results", 20, str_results, len_results);
+        LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, resultsAttribute);
+    }
+
     LLVMAttributeRef profileAttribute;
     if(adaptive) profileAttribute = LLVMCreateStringAttribute(qir->context, "qir_profiles", 12, "adaptive_profile", 16);
     else profileAttribute = LLVMCreateStringAttribute(qir->context, "qir_profiles", 12, "base_profile", 12);
-
-    LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, entryAttribute);
-    LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, labelingAttribute);
     LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, profileAttribute);
-    LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, qubitsAttribute);
-    LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, resultsAttribute);
+
 
     // measurement attribute
     unsigned kind = LLVMGetEnumAttributeKindForName("writeonly", 9);
@@ -750,15 +794,20 @@ FILE *generate_QIR(ast *root){
     LLVMMetadataRef meta_minor = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MINOR_VERSION, 0));
     LLVMMetadataRef meta_dynamic_qu = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, 0));
     LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, adaptive, 0));
+    LLVMMetadataRef meta_ir_functions = LLVMValueAsMetadata(LLVMConstInt(i1_type, ctx->ir_functions, 0));
+    LLVMMetadataRef meta_mult_target_branching = LLVMValueAsMetadata(LLVMConstInt(i1_type, ctx->mult_target_branching, 0));
+    LLVMMetadataRef meta_ir_mult_return_points = LLVMValueAsMetadata(LLVMConstInt(i1_type, ctx->mult_return_points, 0));
 
     LLVMAddModuleFlag(qir->module, LLVMModuleFlagBehaviorError, "qir_major_version", 17, meta_major);
     LLVMAddModuleFlag(qir->module, 6, "qir_minor_version", 17, meta_minor);
     LLVMAddModuleFlag(qir->module, LLVMModuleFlagBehaviorError, "dynamic_qubit_management", 24, meta_dynamic_qu);
     LLVMAddModuleFlag(qir->module, LLVMModuleFlagBehaviorError, "dynamic_result_management", 25, meta_dynamic_res);
+    LLVMAddModuleFlag(qir->module, LLVMModuleFlagBehaviorError, "ir_functions", 12, meta_ir_functions);
+    LLVMAddModuleFlag(qir->module, LLVMModuleFlagBehaviorError, "multiple_target_branching", 15, meta_mult_target_branching);
+    LLVMAddModuleFlag(qir->module, LLVMModuleFlagBehaviorError, "multiple_return_points", 22, meta_ir_mult_return_points);
 
     free(str_qubits);
     free(str_results);
-    // release the list
 
     // string for error handling
     char **error = NULL;
@@ -798,6 +847,7 @@ FILE *generate_QIR(ast *root){
         add_error_entry(ERROR, -1, "Unable to open output file");
     }
 
+    // freeing all
     dispose:
     free_context(ctx);
     

@@ -17,6 +17,7 @@ typedef struct {
 
     LLVMTypeRef *func_type;
     LLVMValueRef *func_fn;
+    bool returned;
 
     LLVMTypeRef *gate_type;
     LLVMValueRef *gate_fn;
