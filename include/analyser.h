@@ -10,7 +10,10 @@ typedef struct {
     // type name and linear status
     enum variable_type type;
     char *name;
+
+    // extra information for linear vars and arrays
     bool consumed;
+    int length;
 
     // depth at declaration
     int scope;
@@ -45,7 +48,7 @@ typedef struct {
 
     // relevant for generator
     int num_qubits, num_results;
-    bool measured, adaptive; 
+    bool measured, adaptive, ir_functions, mult_target_branching, mult_return_points; 
 } context;
 
 enum variable_type binop_type(char *op, enum variable_type type1, enum variable_type type2);

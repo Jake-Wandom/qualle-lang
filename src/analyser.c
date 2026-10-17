@@ -18,6 +18,7 @@ variable create_var(context *ctx, enum variable_type type, char *name){
     new_var.scope = ctx->depth;
     new_var.active = 1;
     new_var.qubit = -1;
+    new_var.length = -1;
 
     new_var.name = strdup(name);
     if(!new_var.name){
@@ -352,10 +353,14 @@ void analyse_call(context *ctx, ast *node){
         node->index = pos+NUM_GATES;
         node->resolved_type = ctx->func_list[pos].return_type;
     } else {
-        num_param = q_gates[pos].args;
+        num_param = q_gates[pos].args+q_gates[pos].angles;
         param = calloc(num_param, sizeof(enum variable_type));
         for(int i = 0; i < num_param; i++){
-            param[i] = VAR_QUBIT;
+            if(i < q_gates[pos].angles){
+                param[i] = VAR_DOUBLE;
+            } else {
+                param[i] = VAR_QUBIT;
+            }
         }
         node->index = pos;
         node->resolved_type = VAR_VOID; 
@@ -374,6 +379,12 @@ void analyse_call(context *ctx, ast *node){
             char message[63];
             snprintf(message, 63, "%d. argument has an incompatible type in function call", i+1);
             add_error_entry(ERROR, current_node->line, message);
+        }
+        if(strcmp(node->value, "reset") == 0){
+            ctx->var_list[current_node->index].consumed = 0;
+        }
+        if(current_node->type == IDENTIFIER && ctx->var_list[current_node->index].consumed){
+            add_error_entry(ERROR, node->line, "Tried to use consumed qubit. To use this qubit again, call the reset gate");
         }
 
         current_node = current_node->branch;
@@ -453,6 +464,7 @@ void analyse_function(context *ctx, ast *node){
     function func = {0};
     enum variable_type og_return_type = ctx->return_type;
     ctx->in_function = 1;
+    ctx->ir_functions = 1;
     ctx->return_type = node->other->resolved_type;
 
     func.name = strdup(node->value);
@@ -511,7 +523,7 @@ void analyse_function(context *ctx, ast *node){
 
 void analyse_return(context *ctx, ast *node){
     if(!ctx->in_function){
-        add_error_entry(ERROR, node->line, "Can only return out of function");
+        //add_error_entry(ERROR, node->line, "Can only return out of function");
     }
     node->resolved_type = ctx->return_type;
     
@@ -627,6 +639,9 @@ context* analyse_ast(ast *root){
     ctx->num_results = 0;
     ctx->measured = 0;
     ctx->adaptive = adaptive;
+    ctx->ir_functions = 0;
+    ctx->mult_return_points = 0;
+    ctx->mult_target_branching = 0;
 
     walk_ast(ctx, root->branch);
     check_errors();
