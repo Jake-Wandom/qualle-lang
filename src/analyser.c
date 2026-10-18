@@ -173,6 +173,9 @@ determines if variable types are compatible for an assignment
 returns true if assignable
 */
 bool assignable_check(enum variable_type left, enum variable_type right, ast *node){
+    if(left == VAR_VOID || right == VAR_VOID || left == VAR_UNKOWN || right == VAR_UNKOWN){
+        return 0;
+    }
     if(left == right) return 1;
     bool qubit_check = (node->type == VALUE && right == VAR_INTEGER && (strcmp(node->value, "0") == 0 || strcmp(node->value, "1") == 0));
     if(left == VAR_QUBIT) return qubit_check;
@@ -309,9 +312,11 @@ enum variable_type analyse_expression(context *ctx, ast *node){
             break;
         case MEASURE:
             analyse_measure(ctx, node);
+            type = node->resolved_type;
             break;
         case CALL:
             analyse_call(ctx, node);
+            type = node->resolved_type;
             break;
         default:
             add_error_entry(ERROR, node->line, "Expected expression");
@@ -445,12 +450,19 @@ void analyse_call(context *ctx, ast *node){
             break;
         }
 
-        analyse_expression(ctx, current_node);
+        enum variable_type type = analyse_expression(ctx, current_node);
+        if(type == VAR_UNKOWN){
+            free(param);
+            return;
+        }
     
         if(!assignable_check(param[i], current_node->resolved_type, current_node)){
             char message[63];
             snprintf(message, 63, "%d. argument has an incompatible type in function call", i+1);
             add_error_entry(ERROR, current_node->line, message);
+        }
+        if(param[i] == VAR_QUBIT && current_node->resolved_type == VAR_INTEGER){
+            add_error_entry(ERROR, node->line, "Qubits can not be implicitly declared");
         }
         if(strcmp(node->value, "reset") == 0){
             ctx->var_list[current_node->index].status = Q_LIVE;
@@ -636,8 +648,13 @@ void analyse_return(context *ctx, ast *node){
     }
 
     enum variable_type expr = analyse_expression(ctx, node->left);
+    if(expr == VAR_UNKOWN){
+        add_error_entry(INTERNAL, node->line, "Unable to determine type of return");
+        return;
+    }
 
-    if(!assignable_check(expr, ctx->return_type, node->left) && expr != VAR_UNKOWN){
+    if(!assignable_check(ctx->return_type, expr, node->left)){
+        fprintf(stderr, "%s and %s\n", type_to_str(ctx->return_type), type_to_str(expr));
         add_error_entry(ERROR, node->line, "Wrong return type");
         return;
     }

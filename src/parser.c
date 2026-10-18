@@ -165,7 +165,7 @@ static bool end_statement(void){
         switch_token(1);
         return 1;
     }
-    if(current_token->type == T_END || match(current_token, T_BRACKET_CLOSE, "}") || match(current_token, T_BRACKET_CLOSE, ")")){
+    if(current_token->type == T_END || current_token->type == T_COMMENT || match(current_token, T_BRACKET_CLOSE, "}") || match(current_token, T_BRACKET_CLOSE, ")")){
         return 1;
     }
     add_error_entry(ERROR, current_token->line, "Expected end of line after statement");
@@ -584,13 +584,16 @@ ast* parse_loop(bool for_loop){
     bool ok;
     ast *subtree = parse_body(&ok);
     if(!subtree && !ok) return NULL;
-    if(!subtree) new_node->right = latch;
-    else new_node->right = subtree;
+    if(!subtree){
+        new_node->right = latch;
+    } else {
+        new_node->right = subtree;
 
-    // append latch at the end of subtree
-    if(for_loop){
-        while(subtree->branch != NULL) subtree = subtree->branch;
-        subtree->branch = latch;
+        // append latch at the end of subtree
+        if(for_loop){
+            while(subtree->branch != NULL) subtree = subtree->branch;
+            subtree->branch = latch;
+        }
     }
 
     if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
@@ -630,9 +633,8 @@ ast* parse_conditional(void){
 
     if(accept(T_IDENTIFIER, "else")){
         if(!expect(T_BRACKET_OPEN, "{")) return NULL;
-
         ast *else_body = parse_body(&ok);
-        if(!else_body || !ok) return NULL;
+        if(!else_body && !ok) return NULL;
         new_node->other = else_body;
 
         if(!expect(T_BRACKET_CLOSE, "}")) return NULL;
@@ -829,7 +831,7 @@ int parse_start(ast *current_node){
         ast *node = parse_statement();
         if(!node){
             res = 1;
-            while(current_token->type != T_END && current_token->type != T_END_OF_LINE) switch_token(1);
+            while(current_token->type != T_END) switch_token(1);
         }
         else {
             current_node->branch = node;

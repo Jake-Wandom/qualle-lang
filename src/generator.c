@@ -133,6 +133,9 @@ casts a variable of old type to a new type
 returns the variable
 */
 LLVMValueRef coerce(qir_context *qir, LLVMValueRef val, enum variable_type old_type, enum variable_type new_type){
+    if(old_type == VAR_VOID || new_type == VAR_VOID || old_type == VAR_UNKOWN || old_type == VAR_UNKOWN){
+        add_error_entry(INTERNAL, -1, "Tried to coerce void or unkown type");
+    }
     if(old_type == new_type) return val;
     if(new_type == VAR_DOUBLE){
         if(old_type == VAR_UINTEGER){
@@ -253,6 +256,7 @@ generates the result of any expression
 returns the valref of the resulting operations/function calls
 */
 LLVMValueRef generate_expression(qir_context *qir, ast *node){
+    if(print) printf("EXPRESSION\n");
     LLVMValueRef ret = 0;
     switch(node->type){
         case UNOP:
@@ -315,35 +319,20 @@ LLVMValueRef generate_expression(qir_context *qir, ast *node){
             break;
         case CALL:
             if(node->index < NUM_GATES){ // gate call
-                gate call_gate = q_gates[node->index];
-
-                LLVMTypeRef param[call_gate.args];
-                ast *current_node = node->left;
-                for(int i = 0; i < call_gate.args; i++){
-                    param[i] = get_type(current_node->resolved_type);
-                    current_node = current_node->branch;
-                }
-
-                LLVMValueRef args[call_gate.args];
-                current_node = node->left;
-                for(int i = 0; i < call_gate.args; i++){
-                    args[i] = qir->valref[current_node->index];
-                    current_node = current_node->branch;
-                }
-
-                emit_gate(qir, node->index, args, param);
+                add_error_entry(ERROR, node->line, "Gates are not valid in function calls");
                 
             } else { // custom func call
                 function fn = ctx->func_list[node->index-NUM_GATES];
-                LLVMValueRef args[fn.num_param];
+                LLVMValueRef *args = calloc(fn.num_param, sizeof(LLVMValueRef));
                 ast *current_node = node->left;
                 for(int i = 0; i < fn.num_param; i++){
                     args[i] = generate_expression(qir, current_node);
                     current_node = current_node->branch;
                 }
-
                 ret = LLVMBuildCall2(qir->builder, qir->func_type[node->index-NUM_GATES], qir->func_fn[node->index-NUM_GATES], args, fn.num_param, "");
+                free(args);
             }
+
             if(print) printf("%s CALL\n", node->value);
             break;
         default:
@@ -431,6 +420,11 @@ void generate_call(qir_context *qir, ast *node){
                 args[i] = generate_expression(qir, current_node);
             } else {
                 args[i] = qir->valref[current_node->index];
+                for(int j = 0; j < i; j++){
+                    if(args[j] == args[i]){
+                        add_error_entry(ERROR, current_node->line, "Gate call arguments have to be unique");
+                    }
+                }
             }
             current_node = current_node->branch;
         }
@@ -442,13 +436,14 @@ void generate_call(qir_context *qir, ast *node){
         
     } else { // custom func call
         function fn = ctx->func_list[node->index-NUM_GATES];
-        LLVMValueRef args[fn.num_param];
+        LLVMValueRef *args = calloc(fn.num_param, sizeof(LLVMValueRef));
         ast *current_node = node->left;
         for(int i = 0; i < fn.num_param; i++){
             args[i] = generate_expression(qir, current_node);
             current_node = current_node->branch;
         }
         LLVMBuildCall2(qir->builder, qir->func_type[node->index-NUM_GATES], qir->func_fn[node->index-NUM_GATES], args, fn.num_param, "");
+        free(args);
     }
 
     if(print) printf("%s CALL\n", node->value);
@@ -856,7 +851,7 @@ FILE *generate_QIR(ast *root){
     LLVMMetadataRef meta_major = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MAJOR_VERSION, 0));
     LLVMMetadataRef meta_minor = LLVMValueAsMetadata(LLVMConstInt(i32_type, QIR_MINOR_VERSION, 0));
     LLVMMetadataRef meta_dynamic_qu = LLVMValueAsMetadata(LLVMConstInt(i1_type, dynamic, 0));
-    LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, dynamic, 0));
+    LLVMMetadataRef meta_dynamic_res = LLVMValueAsMetadata(LLVMConstInt(i1_type, 0, 0));
     LLVMMetadataRef meta_ir_functions = LLVMValueAsMetadata(LLVMConstInt(i1_type, ctx->ir_functions, 0));
     LLVMMetadataRef meta_mult_target_branching = LLVMValueAsMetadata(LLVMConstInt(i1_type, ctx->mult_target_branching, 0));
     LLVMMetadataRef meta_ir_mult_return_points = LLVMValueAsMetadata(LLVMConstInt(i1_type, ctx->mult_return_points, 0));

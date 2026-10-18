@@ -25,7 +25,7 @@ const gate q_gates[] = {
     {"RX", "__quantum__qis__rx__body", 1, 1},
     {"RY", "__quantum__qis__ry__body", 1, 1},
     {"RZ", "__quantum__qis__rz__body", 1, 1},
-    {"S", "__quantum__qis__s__body", 1, 1},
+    {"S", "__quantum__qis__s__body", 1, 0},
     {"T", "__quantum__qis__t__body", 1, 0},
     {"CX", "__quantum__qis__cx__body", 2, 0},
     {"CY", "__quantum__qis__cy__body", 2, 0},
