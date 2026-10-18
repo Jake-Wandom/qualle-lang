@@ -10,14 +10,16 @@
 #include <stdbool.h>
 
 bool print = 0;
+bool dynamic = 0;
 
 variable create_var(context *ctx, enum variable_type type, char *name){
     variable new_var;
     new_var.type = type;
-    new_var.consumed = 0;
+    new_var.status = Q_LIVE;
     new_var.scope = ctx->depth;
     new_var.active = 1;
     new_var.qubit = -1;
+    new_var.arg = 0;
     new_var.length = -1;
 
     new_var.name = strdup(name);
@@ -38,6 +40,12 @@ void enter_scope(context *ctx){
 void leave_scope(context *ctx){
     for(size_t i = ctx->marks[--ctx->depth]; i < ctx->num_vars; i++){
         ctx->var_list[i].active = 0;
+        if(ctx->var_list[i].type == VAR_QUBIT && ctx->var_list[i].status != Q_RELEASED && dynamic && !ctx->var_list[i].arg){
+            size_t s = strlen(ctx->var_list[i].name);
+            char message[60+s];
+            snprintf(message, 60+s, "Qubit %s was not released before exiting scope", ctx->var_list[i].name);
+            add_error_entry(ERROR, -1, message);
+        }
     }
 }
 
@@ -284,7 +292,7 @@ void analyse_declare(context *ctx, ast *node){
     }
 
     if(ctx->var_list[res].type == VAR_QUBIT){
-        if(ctx->depth != 0){
+        if(ctx->depth != 0 && !dynamic){
             add_error_entry(ERROR, node->line, "qubits can only be declared in a global context");
             return;
         }
@@ -362,6 +370,9 @@ void analyse_call(context *ctx, ast *node){
                 param[i] = VAR_QUBIT;
             }
         }
+        if(pos == 6){ // record function
+            node->res_id = ctx->num_results-1;
+        }
         node->index = pos;
         node->resolved_type = VAR_VOID; 
     }
@@ -381,10 +392,13 @@ void analyse_call(context *ctx, ast *node){
             add_error_entry(ERROR, current_node->line, message);
         }
         if(strcmp(node->value, "reset") == 0){
-            ctx->var_list[current_node->index].consumed = 0;
-        }
-        if(current_node->type == IDENTIFIER && ctx->var_list[current_node->index].consumed){
+            ctx->var_list[current_node->index].status = Q_LIVE;
+        } else if(strcmp(node->value, "release") == 0){
+            ctx->var_list[current_node->index].status = Q_RELEASED;
+        } else if(current_node->type == IDENTIFIER && ctx->var_list[current_node->index].status == Q_MEASURED){
             add_error_entry(ERROR, node->line, "Tried to use consumed qubit. To use this qubit again, call the reset gate");
+        } else if(current_node->type == IDENTIFIER && ctx->var_list[current_node->index].status == Q_RELEASED){
+            add_error_entry(ERROR, node->line, "Tried to use released qubit");
         }
 
         current_node = current_node->branch;
@@ -410,7 +424,7 @@ void analyse_measure(context *ctx, ast *node){
     node->res_id = ctx->num_results;
     node->resolved_type = VAR_BIT;
 
-    ctx->var_list[pos].consumed = 1;
+    ctx->var_list[pos].status = Q_MEASURED;
     ctx->num_results++;
     ctx->measured = 1;
 }
@@ -496,6 +510,8 @@ void analyse_function(context *ctx, ast *node){
             if(ctx->var_list[res].type == VAR_VOID){
                 add_error_entry(ERROR, current_node->line, "Void is an invalid type for variables");
             }
+
+            ctx->var_list[res].arg = 1;
 
             func.param_types[func.num_param++] = current_node->resolved_type;
         }

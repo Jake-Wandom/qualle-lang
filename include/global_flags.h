@@ -7,5 +7,6 @@ extern bool ll;
 extern bool optimisation;
 extern bool print;
 extern bool adaptive;
+extern bool dynamic;
 
 #endif

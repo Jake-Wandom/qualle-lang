@@ -53,6 +53,9 @@ int main(int argc, char **argv){
                         case 'a':
                             adaptive = 1;
                             break;
+                        case 'd':
+                            dynamic = 1;
+                            break;
                         default:
                             fprintf(stderr, "Unkown flag -%c\n", argv[i][j]);
                             return_value = 1;
@@ -109,8 +112,7 @@ int main(int argc, char **argv){
 
     for(int i = 0; i < num_of_files; i++){
         if(print) printf("FILE CONTENT %i. FILE:\n",i+1);
-        size_t s = fread(main_buffer, buffer_size, 1, files[i]);
-        //if(s == 0) continue;
+        fread(main_buffer, buffer_size, 1, files[i]);
         if(print) printf("%s", main_buffer);
 
         if(print) printf("\n\n");
@@ -129,6 +131,7 @@ int main(int argc, char **argv){
         
         if(print) printf("PARSER PHASE:\n");
         ast *root = generate_ast(first_token);
+        if(print) print_ast(root, 1);
         if(!root){
             free_token_list(first_token);
             return_value = 3;

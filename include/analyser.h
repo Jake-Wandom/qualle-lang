@@ -5,14 +5,20 @@
 #include "quantum_gates.h"
 #include <stdio.h>
 
+enum status {
+    Q_LIVE,
+    Q_MEASURED,
+    Q_RELEASED
+};
 
 typedef struct {
     // type name and linear status
     enum variable_type type;
     char *name;
 
-    // extra information for linear vars and arrays
-    bool consumed;
+    // extra information for qubits and arrays
+    enum status status;
+    bool arg;
     int length;
 
     // depth at declaration
