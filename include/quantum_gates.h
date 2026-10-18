@@ -1,9 +1,7 @@
 #ifndef H_QUANTUM_GATES_QUALLE
 #define H_QUANTUM_GATES_QUALLE
 
-#include <llvm-c/Core.h>
-
-#define NUM_GATES 17
+#define NUM_GATES 19
 
 typedef struct {
     const char *gate_name, *qir_name;

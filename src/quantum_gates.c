@@ -20,6 +20,8 @@ const gate q_gates[] = {
     {"Y", "__quantum__qis__y__body", 1, 0},
     {"Z", "__quantum__qis__z__body", 1, 0},
     {"reset", "__quantum__qis__reset__body", 1, 0},
+    {"release", "__quantum__rt__qubit_release", 1, 0},
+    {"record", "__quantum__rt__result_record_output", 2, 0},
     {"RX", "__quantum__qis__rx__body", 1, 1},
     {"RY", "__quantum__qis__ry__body", 1, 1},
     {"RZ", "__quantum__qis__rz__body", 1, 1},
