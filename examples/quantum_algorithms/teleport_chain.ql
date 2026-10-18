@@ -5,34 +5,33 @@ qubit q3 = 0
 qubit q4 = 0
 qubit q5 = 0
 
-H(q0); CX(q0, q1)
-H(q2); CX(q2, q4)
-H(q3); CX(q3, q5)
-CX(q1, q2)
+bell(q0,q1)
+bell(q2,q4)
+bell(q3,q5)
+CX(q1,q2)
 H(q1)
-
-if(measure(q1)){
+bit b0 = measure(q1)
+if(b0){
     Z(q4)
 }
-reset(q1)
 
-if(measure(q2)){
+bit b1 = measure(q2)
+if(b1){
     X(q4)
 }
-reset(q2)
 
-CX(q4, q3); H(q4)
-if(measure(q4)){
+CX(q4,q3)
+H(q4)
+
+bit b2 = measure(q4)
+if(b2){
     Z(q5)
 }
-reset(q4)
 
-if(measure(q3)){
+bit b3 = measure(q3)
+if(b3){
     X(q5)
 }
-reset(q3)
 
 measure(q0)
-reset(q0)
 measure(q5)
-reset(q5)

@@ -3,6 +3,7 @@ H(q);
 X(q);
 Y(q);
 Z(q);
-S(q);
+RX(90, q);
+S(45, q);
 T(q);
 MEASURE(q);
