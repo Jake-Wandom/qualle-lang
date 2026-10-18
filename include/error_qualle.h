@@ -1,6 +1,7 @@
 #ifndef H_ERROR_QUALLE
 #define H_ERROR_QUALLE
 
+// error severity
 typedef enum {
     INTERNAL,
     WARNING,
@@ -8,12 +9,14 @@ typedef enum {
     FATAL
 } severity;
 
+// single error
 typedef struct {
     severity type;
     int line;
     char *message;
 } diagnose;
 
+// struct to manage all errors
 typedef struct {
     diagnose entries[64];
     int size;

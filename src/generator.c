@@ -17,6 +17,7 @@
 #define QIR_MAJOR_VERSION 2
 #define QIR_MINOR_VERSION 1
 
+// obligatory initial flag declaration explanation in global_flags.h
 bool ll = 0;
 bool optimisation = 0;
 
@@ -50,6 +51,10 @@ static LLVMValueRef out_err;
 // global variable for the current function
 static LLVMValueRef current_function;
 
+/*
+creates a label necessary for output recording
+returns the label
+*/
 LLVMValueRef make_label(qir_context *qir, int number){
     size_t temp_size = 2;
     if(number > 0) temp_size = floor(log10(number))+2;
@@ -81,6 +86,11 @@ LLVMValueRef make_label(qir_context *qir, int number){
     return array;
 }
 
+/*
+This calls any specified gate in the gate list with submitted arguments and parameters
+if a gate type and function has not been predefined, we do that first
+A special excpetion for gate 6(record) adds the readonly attribute to it
+*/
 void emit_gate(qir_context *qir, int gate_index, LLVMValueRef *args, LLVMTypeRef *param){
     if(qir->gate_type[gate_index] == 0){
         qir->gate_type[gate_index] = LLVMFunctionType(void_type, param, q_gates[gate_index].args, 0);
@@ -96,6 +106,9 @@ void emit_gate(qir_context *qir, int gate_index, LLVMValueRef *args, LLVMTypeRef
     LLVMBuildCall2(qir->builder, qir->gate_type[gate_index], qir->gate_fn[gate_index], args, q_gates[gate_index].args, "");
 }
 
+/*
+returns a corresponding LLVM type for every QUALLE type
+*/
 LLVMTypeRef get_type(enum variable_type type){
     switch(type){
         case VAR_QUBIT:
@@ -115,6 +128,10 @@ LLVMTypeRef get_type(enum variable_type type){
     }
 }
 
+/*
+casts a variable of old type to a new type
+returns the variable
+*/
 LLVMValueRef coerce(qir_context *qir, LLVMValueRef val, enum variable_type old_type, enum variable_type new_type){
     if(old_type == new_type) return val;
     if(new_type == VAR_DOUBLE){
@@ -134,6 +151,10 @@ LLVMValueRef coerce(qir_context *qir, LLVMValueRef val, enum variable_type old_t
     return val;
 }
 
+/*
+generates any operation (again not only binary, will change it soon i promies T.T)
+returns the valueref of the operation
+*/
 LLVMValueRef generate_binary(qir_context *qir, char *op, enum variable_type common_type, LLVMValueRef left, LLVMValueRef right){
     if(strcmp("+", op) == 0){
         if(common_type == VAR_DOUBLE){
@@ -227,7 +248,10 @@ LLVMValueRef generate_binary(qir_context *qir, char *op, enum variable_type comm
     return 0;
 }
 
-
+/*
+generates the result of any expression
+returns the valref of the resulting operations/function calls
+*/
 LLVMValueRef generate_expression(qir_context *qir, ast *node){
     LLVMValueRef ret = 0;
     switch(node->type){
@@ -328,7 +352,11 @@ LLVMValueRef generate_expression(qir_context *qir, ast *node){
     return ret;
 }
 
-
+/*
+allocates memory for a variable or stores the valueref of a qubit
+dynamic qubits call a QIR allocation function for them
+valuerefs are stored in the valref list
+*/
 void generate_declare(qir_context *qir, ast *node){
     if(node->index == -1){
         add_error_entry(INTERNAL, node->line, "Unable to access index of variable");
@@ -352,6 +380,10 @@ void generate_declare(qir_context *qir, ast *node){
     if(print) printf("NEW VAR %s\n",node->value);
 }
 
+/*
+calls generate declare for new variables
+calculates expression and stores it in variable
+*/
 void generate_assign(qir_context *qir, ast *node){
     if(node->left->type == NAME){
         generate_declare(qir, node->left);
@@ -382,6 +414,9 @@ void generate_assign(qir_context *qir, ast *node){
     if(print) printf("ASSIGN\n");
 }
 
+/*
+generates the call of any function or gate
+*/
 void generate_call(qir_context *qir, ast *node){
     if(node->index < NUM_GATES){ // gate call
         gate call_gate = q_gates[node->index];
@@ -419,6 +454,9 @@ void generate_call(qir_context *qir, ast *node){
     if(print) printf("%s CALL\n", node->value);
 }
 
+/*
+generates a measurement call and adds the measured qubit to the result list
+*/
 void generate_measure(qir_context *qir, ast *node){
     qir->result_list[node->res_id] = qir->valref[node->index];
     if(adaptive){
@@ -429,6 +467,10 @@ void generate_measure(qir_context *qir, ast *node){
     if(print) printf("MEASUREMENT with %s\n",node->value);
 }
 
+/*
+generates a conditional by using multiple branch instructions and blocks
+calculates the result of a measurement or expression and then conditionally branches on it
+*/
 void generate_if(qir_context *qir, ast *node){
     LLVMBasicBlockRef if_condition_block = LLVMAppendBasicBlockInContext(qir->context, current_function, "if_condition");
     LLVMBasicBlockRef if_body_block = LLVMAppendBasicBlockInContext(qir->context, current_function, "if_body");
@@ -460,6 +502,10 @@ void generate_if(qir_context *qir, ast *node){
     if(print) printf("IF\n");
 }
 
+/*
+generates a for loop by using multiple branch instructions and blocks
+calculates the initial statement and conditional expression to conditionally branch into the loop body
+*/
 void generate_for(qir_context *qir, ast *node){
     // for loop building blocks
     LLVMBasicBlockRef for_init_block = LLVMAppendBasicBlockInContext(qir->context, current_function, "for_init");
@@ -486,6 +532,10 @@ void generate_for(qir_context *qir, ast *node){
     if(print) printf("FOR\n");
 }
 
+/*
+generates a while loop by using multiple branch instructions and blocks
+calculates the conditional expression to conditionally branch into the loop body
+*/
 void generate_while(qir_context *qir, ast *node){
     // while loop building blocks
     LLVMBasicBlockRef while_condition_block = LLVMAppendBasicBlockInContext(qir->context, current_function, "while_condition");
@@ -508,6 +558,9 @@ void generate_while(qir_context *qir, ast *node){
     if(print) printf("WHILE\n");
 }
 
+/*
+generates function by entering a new LLVM context and walking through the ast
+*/
 void generate_function(qir_context *qir, ast *node){
     function fn = ctx->func_list[node->index];
     LLVMTypeRef *param = calloc(fn.num_param, sizeof(LLVMTypeRef));
@@ -576,6 +629,10 @@ void generate_function(qir_context *qir, ast *node){
     LLVMDisposeBuilder(f_abuilder);
 }
 
+/*
+generates return
+either returns void or an expression result
+*/
 void generate_return(qir_context *qir, ast *node){
     qir->returned = 1;
     if(node->left == NULL){
@@ -586,7 +643,9 @@ void generate_return(qir_context *qir, ast *node){
     }
 }
 
-
+/*
+calls all generation sub-routines
+*/
 void generate_statement(qir_context *qir, ast *node){
     switch(node->type){
         case NAME:
@@ -624,6 +683,9 @@ void generate_statement(qir_context *qir, ast *node){
     }
 }
 
+/*
+calls generate_statement for every top-level node
+*/
 void ast_walk(qir_context *qir, ast *node){
     while(node){
         generate_statement(qir, node);
@@ -631,7 +693,10 @@ void ast_walk(qir_context *qir, ast *node){
     }
 }
 
-
+/*
+main generator function that contains most of the LLVM logic
+returns a file pointer to the generated output file
+*/
 FILE *generate_QIR(ast *root){
     // setup for qir_context
     qir_context *qir = calloc(1, sizeof(qir_context));

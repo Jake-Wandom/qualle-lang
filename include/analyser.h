@@ -5,6 +5,7 @@
 #include "quantum_gates.h"
 #include <stdio.h>
 
+// status of a qubit
 enum status {
     Q_LIVE,
     Q_MEASURED,
@@ -30,9 +31,12 @@ typedef struct {
 } variable;
 
 typedef struct {
+    // function name and return type
     char *name;
     enum variable_type return_type;
 
+    // parameter information
+    // Probably should change static array size in the future
     enum variable_type param_types[64];
     int num_param;
 } function;

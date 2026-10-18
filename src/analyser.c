@@ -9,9 +9,15 @@
 #include <string.h>
 #include <stdbool.h>
 
+// obligatory initial flag declaration explanation in global_flags.h
 bool print = 0;
 bool dynamic = 0;
 
+/*
+creates a new variable with all entries initialised to appropriate values
+the name is duped so it has to be freed later
+returns new variable
+*/
 variable create_var(context *ctx, enum variable_type type, char *name){
     variable new_var;
     new_var.type = type;
@@ -30,6 +36,10 @@ variable create_var(context *ctx, enum variable_type type, char *name){
     return new_var;
 }
 
+/*
+enters a scope by saving the old variable count in marks
+this allows us to deactivate all new variables when leaving the scope
+*/
 void enter_scope(context *ctx){
     if(ctx->depth > 63){
         add_error_entry(FATAL, -1, "Exceeded maximum depth of 64");
@@ -37,10 +47,14 @@ void enter_scope(context *ctx){
     ctx->marks[ctx->depth++] = ctx->num_vars;
 }
 
+/*
+leaves the scope by deactivating all scoped variables
+also checks for unreleased qubits when dynamic qubits are enabled
+*/
 void leave_scope(context *ctx){
     for(size_t i = ctx->marks[--ctx->depth]; i < ctx->num_vars; i++){
         ctx->var_list[i].active = 0;
-        if(ctx->var_list[i].type == VAR_QUBIT && ctx->var_list[i].status != Q_RELEASED && dynamic && !ctx->var_list[i].arg){
+        if(dynamic && ctx->var_list[i].type == VAR_QUBIT && ctx->var_list[i].status != Q_RELEASED && !ctx->var_list[i].arg){
             size_t s = strlen(ctx->var_list[i].name);
             char message[60+s];
             snprintf(message, 60+s, "Qubit %s was not released before exiting scope", ctx->var_list[i].name);
@@ -49,6 +63,10 @@ void leave_scope(context *ctx){
     }
 }
 
+/*
+searches for an active variable in the variable list
+returns the variable position or -1/-2 on failures
+*/
 int lookup_var(context *ctx, char *name){
     if(!name) return -2;
 
@@ -61,6 +79,11 @@ int lookup_var(context *ctx, char *name){
     return -1;
 }
 
+/*
+adds a variable to the variable list
+increases list size if necessary and checks for uniqueness
+returns variable position or -1 on failure
+*/
 int add_var(context *ctx, ast *node){
     int pos = lookup_var(ctx, node->value);
 
@@ -85,6 +108,9 @@ int add_var(context *ctx, ast *node){
     return ctx->num_vars-1;
 }
 
+/*
+analogue behaviour to lookup_var for functions
+*/
 int lookup_func(context *ctx, char *name){
     if(!name) return -2;
 
@@ -97,6 +123,9 @@ int lookup_func(context *ctx, char *name){
     return -1;
 }
 
+/*
+analogue behaviour to add_var for functions
+*/
 int add_func(context *ctx, function func){
     int pos = lookup_gate(func.name);
     if(pos >= 0){
@@ -124,6 +153,10 @@ int add_func(context *ctx, function func){
     return ctx->num_funcs-1;
 }
 
+/*
+determines if a variable is numeric
+returns true if numeric
+*/
 bool is_numeric(enum variable_type type){
     switch(type){
         case VAR_INTEGER:
@@ -135,6 +168,10 @@ bool is_numeric(enum variable_type type){
     }
 }
 
+/*
+determines if variable types are compatible for an assignment
+returns true if assignable
+*/
 bool assignable_check(enum variable_type left, enum variable_type right, ast *node){
     if(left == right) return 1;
     bool qubit_check = (node->type == VALUE && right == VAR_INTEGER && (strcmp(node->value, "0") == 0 || strcmp(node->value, "1") == 0));
@@ -147,6 +184,12 @@ bool assignable_check(enum variable_type left, enum variable_type right, ast *no
     return 0;
 }
 
+/*
+determines the type of an operation
+name says binop but is for all operations (will change later)
+this does not loose information, if an operation would do that it returns VAR_UNKOWN
+returns the operation type
+*/
 enum variable_type binop_type(char *op, enum variable_type type1, enum variable_type type2){
     enum variable_type type = VAR_UNKOWN;
 
@@ -197,6 +240,10 @@ enum variable_type binop_type(char *op, enum variable_type type1, enum variable_
     return type;
 }
 
+/*
+goes through an expression and analyses its sub-components
+values and identifiers are directly analysed while the other cases call sub-routines
+*/
 enum variable_type analyse_expression(context *ctx, ast *node){
     enum variable_type type = VAR_UNKOWN;
     enum variable_type res = VAR_UNKOWN;
@@ -273,6 +320,9 @@ enum variable_type analyse_expression(context *ctx, ast *node){
     return type;
 }
 
+/*
+analyses a body by entering a scope before walking through it
+*/
 void analyse_body(context *ctx, ast *node){
     enter_scope(ctx);
 
@@ -281,6 +331,10 @@ void analyse_body(context *ctx, ast *node){
     leave_scope(ctx);
 }
 
+/*
+analyses declare by trying to add the new variable to the list
+does extra work for qubits
+*/
 void analyse_declare(context *ctx, ast *node){
     int res = add_var(ctx, node);
         
@@ -303,6 +357,10 @@ void analyse_declare(context *ctx, ast *node){
     }
 }
 
+/*
+analyses the declared variable and the to be assigned expression
+checks assignability and qubit copying
+*/
 void analyse_assign(context *ctx, ast *node){
     enum variable_type expr_type = analyse_expression(ctx, node->right);
 
@@ -336,6 +394,9 @@ void analyse_assign(context *ctx, ast *node){
     }
 }
 
+/*
+analyses a function call by checking the parameters of a given gate/function
+*/
 void analyse_call(context *ctx, ast *node){
     int num_param = 0;
     enum variable_type *param;
@@ -409,6 +470,9 @@ void analyse_call(context *ctx, ast *node){
     free(param);
 }
 
+/*
+analyses a measurement call by checking the input argument and setting it to measured
+*/
 void analyse_measure(context *ctx, ast *node){
     int pos = lookup_var(ctx, node->value);
     if(pos < 0){
@@ -429,6 +493,9 @@ void analyse_measure(context *ctx, ast *node){
     ctx->measured = 1;
 }
 
+/*
+analyses if by analysing the condition and body
+*/
 void analyse_if(context *ctx, ast *node){
     if(node->left->type == MEASURE){
         analyse_measure(ctx, node->left);
@@ -446,6 +513,10 @@ void analyse_if(context *ctx, ast *node){
     }
 }
 
+/*
+analyses for by analysing the condition and body
+the function parameters and body are in two separate scopes
+*/
 void analyse_for(context *ctx, ast *node){
     enter_scope(ctx);
     analyse_statement(ctx, node->left);
@@ -459,6 +530,9 @@ void analyse_for(context *ctx, ast *node){
     leave_scope(ctx);
 }
 
+/*
+analyses while by analysing the condition and body
+*/
 void analyse_while(context *ctx, ast *node){
 
     enum variable_type expr = analyse_expression(ctx, node->left);
@@ -469,6 +543,11 @@ void analyse_while(context *ctx, ast *node){
     analyse_body(ctx, node->right);
 }
 
+/*
+analyses function definition
+creates a new function and tries to add it to the list
+analyses the parameters and the body
+*/
 void analyse_function(context *ctx, ast *node){
     if(ctx->depth != 0 || ctx->in_function){
         add_error_entry(ERROR, node->line, "Function declarations only at top level");
@@ -537,6 +616,9 @@ void analyse_function(context *ctx, ast *node){
     ctx->return_type = og_return_type;
 }
 
+/*
+analyses return by checking for correct types
+*/
 void analyse_return(context *ctx, ast *node){
     if(!ctx->in_function){
         //add_error_entry(ERROR, node->line, "Can only return out of function");
@@ -561,6 +643,9 @@ void analyse_return(context *ctx, ast *node){
     }
 }
 
+/*
+calls the different sub-routines for analysis
+*/
 void analyse_statement(context *ctx, ast *node){
     if(!ctx->adaptive && ctx->measured && node->type != MEASURE){
         add_error_entry(ERROR, node->line, "No other statements allowed after measurement in the QIR Base profile");
@@ -619,6 +704,9 @@ void analyse_statement(context *ctx, ast *node){
     }
 }
 
+/*
+calls analyse_statement for every top-level node
+*/
 void walk_ast(context *ctx, ast *node){
     while(node){
         analyse_statement(ctx, node);
@@ -626,6 +714,10 @@ void walk_ast(context *ctx, ast *node){
     }
 }
 
+/*
+creates context and calls walk_ast
+returns the context
+*/
 context* analyse_ast(ast *root){
     context *ctx = calloc(1, sizeof(context));
     if(!ctx){

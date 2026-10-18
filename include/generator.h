@@ -5,20 +5,24 @@
 #include <stdio.h>
 #include <llvm-c/Core.h>
 
+// context struct for the generator
 typedef struct {
+    // LLVM context variables
     LLVMContextRef context;
     LLVMModuleRef module;
     LLVMBuilderRef builder;
 
+    // entry block of the current function
     LLVMBasicBlockRef entry_block;
 
     LLVMValueRef *valref; // same indexing as var_list 
     LLVMValueRef *result_list; // store result pointer
 
+    // same indexing as function list
     LLVMTypeRef *func_type;
     LLVMValueRef *func_fn;
     bool returned;
-
+    
     LLVMTypeRef *gate_type;
     LLVMValueRef *gate_fn;
 } qir_context;

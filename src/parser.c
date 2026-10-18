@@ -10,7 +10,7 @@
 // global variables that track the current token and last linebreak
 static token *current_token;
 
-// flags that mark, if we are in a certain program state
+// obligatory initial flag declaration explanation in global_flags.h
 bool adaptive = 0;
 
 // reserved keywords list
@@ -66,6 +66,7 @@ static const char *keywords[] = {
 /*
 creates a new node with all pointer values set to NULL
 contrary to create_token, this function does not automatically append
+returns a pointer to the new node
 */
 ast* create_node(enum ast_type type, int line, char *value){
     ast *new_node = calloc(1, sizeof(ast));
@@ -90,7 +91,7 @@ ast* create_node(enum ast_type type, int line, char *value){
 /*
 Traverses the token list for num tokens
 If the token is NULL we exit, this should not happen
-If the token is END, we return it
+If the token is END, we return
 */
 static void switch_token(int num){
     for(int i = 0; i < num; i++){
@@ -105,6 +106,8 @@ static void switch_token(int num){
 }
 
 /*
+Looks forward num steps in the token list
+returns a pointer to the chosen token
 */
 static token* look_forward(int num){
     token *tok = current_token;
@@ -117,6 +120,7 @@ static token* look_forward(int num){
 /*
 Matches the token to a token type and word
 Both the type and word have to be correct
+returns ture if it matches
 */
 static bool match(token *tok, enum token_type type, char *word){
     if(!word) return 0;
@@ -131,7 +135,7 @@ static bool match(token *tok, enum token_type type, char *word){
 }
 
 /*
-If the current token is a match, it switches token and returns
+If the current token is a match, it switches token and returns true
 */
 static bool accept(enum token_type type, char *word){
     if(!match(current_token, type, word)) return 0;
@@ -141,6 +145,7 @@ static bool accept(enum token_type type, char *word){
 
 /*
 Special case of accept, where we throw an error message if it is false
+returns true if the token was accepted
 */
 static bool expect(enum token_type type, char *word){
     if(accept(type, word)) return 1;
@@ -153,6 +158,7 @@ static bool expect(enum token_type type, char *word){
 /*
 Function that gets called after every statement parsing function
 It Checks the termination conditions for a statement
+returns true if we get a valid statement ending token
 */
 static bool end_statement(void){
     if(current_token->type == T_END_OF_LINE){
@@ -166,6 +172,10 @@ static bool end_statement(void){
     return 0;
 }
 
+/*
+checks name against words in the keywords list
+returns true, if name is not in the list
+*/
 static bool check_keywords(char *name){
     for(int i = 0; i < NUM_KEYWORDS; i++){
         if(strcmp(keywords[i], name) == 0){
@@ -178,6 +188,14 @@ static bool check_keywords(char *name){
     return 1;
 }
 
+/*
+determines the binary operation of the current token
+name is misleading since this is done for all types of operations (will change in future)
+looks forward 1 for double operators
+also determines informations for expression parsing, like right-associativity and precedence
+stores binop information in the given pointer
+returns true if binop is valid
+*/
 static bool determine_binop(op_info *op){
     if(current_token->type != T_OPERATOR) return 0;
     char op1 = current_token->value[0];
@@ -237,6 +255,10 @@ static bool determine_binop(op_info *op){
     return 0;
 }
 
+/*
+determines if a given name is a QUALLE variable type
+returns the variable type or UNKNOWN
+*/
 enum variable_type check_type(char *name){
     enum variable_type type = VAR_UNKOWN;
 
@@ -264,6 +286,11 @@ enum variable_type check_type(char *name){
     return type;
 }
 
+/*
+lowest function in the parse_expression chain
+parses the basic components of expressions
+returns a pointer to the new primary node
+*/
 ast* parse_primary(void){
 
     if(match(current_token, T_IDENTIFIER, "measure") || match(current_token, T_IDENTIFIER, "MEASURE") || match(current_token, T_IDENTIFIER, "mz") || match(current_token, T_IDENTIFIER, "MZ")){
@@ -339,6 +366,10 @@ ast* parse_primary(void){
     return NULL;
 }
 
+/*
+checks if a unary operation is applied in expression
+returns result of recursive parse unary or parse primary if no unary operation is applied
+*/
 ast* parse_unary(void){
     token *tok = current_token;
     if(match(tok, T_OPERATOR, "-") || match(tok, T_OPERATOR, "!")){
@@ -356,6 +387,12 @@ ast* parse_unary(void){
     return parse_primary();
 }
 
+/*
+expression parsing with precedence climbing
+uses minimum precedence to determine if sub-expression is parsed or if an operation is parsed
+always parses left side of the expression with parse unary
+returns subtree of the expression
+*/
 ast* parse_expression(int min_prec){
     ast *left = parse_unary();
     if(!left) return NULL;
@@ -377,6 +414,12 @@ ast* parse_expression(int min_prec){
     return left;
 }
 
+/*
+parses the body of any function conditional or loop
+terminates on '}'
+uses a temporary node to parse the subtree
+returns subtree
+*/
 ast* parse_body(bool *ok){
     ast *body_root = create_node(ROOT, current_token->line, "");
     ast *current_node = body_root;
@@ -418,6 +461,15 @@ ast* parse_body(bool *ok){
     return current_node;
 }
 
+/*
+parses function by checking function name and bracket usage
+parses arguments in a loop and determines return type
+parses body subtree with parse_body
+arguments are appended to left branch
+return type is appended to other branch
+body is appended to right branch
+returns function node
+*/
 ast* parse_function(void){
     switch_token(1);
     ast *new_node;
@@ -486,6 +538,12 @@ ast* parse_function(void){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+parses both for and while loops
+for loops: initial statment -> left branch, condition -> other branch, body -> right branch
+while loops: condition -> left branch, body -> right branch
+returns loop node
+*/
 ast* parse_loop(bool for_loop){
     ast *new_node;
     ast *latch = NULL;
@@ -540,6 +598,13 @@ ast* parse_loop(bool for_loop){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+parses conditional
+condition expression is parsed and appended to left branch
+if body is appended to right branch
+else body is appended to other branch
+returns conditional node
+*/
 ast* parse_conditional(void){
     ast *new_node = create_node(CONDITIONAL, current_token->line, "if");
     switch_token(1);
@@ -575,6 +640,10 @@ ast* parse_conditional(void){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+parses measure by statically checking single argument
+returns measure node
+*/
 ast* parse_measure(void){
     switch_token(1);
     if(!expect(T_BRACKET_OPEN, "(")) return NULL;
@@ -593,6 +662,10 @@ ast* parse_measure(void){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+parses return by parsing expression and checking end of line
+returns return node
+*/
 ast* parse_return(void){
     ast *new_node = create_node(RETURN, current_token->line, "return");
     if(!new_node) return NULL;
@@ -607,6 +680,10 @@ ast* parse_return(void){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+parses declaration by creating a name node with variable name and resolved type
+return name node
+*/
 ast* parse_declaration(void){
     // creating name node for the new variable
     if(!check_keywords(look_forward(1)->value)) return NULL;
@@ -618,6 +695,13 @@ ast* parse_declaration(void){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+parses assigns
+declaration assigns create a name sub-node on the left branch
+assignments to existing variables create an identifier node on the left branch
+right hand expression is appended to the right branch
+returns assign node
+*/
 ast* parse_assign(void){
     ast *new_node;
     if(check_type(current_token->value) != VAR_UNKOWN){
@@ -646,7 +730,9 @@ ast* parse_assign(void){
     return end_statement() ? new_node : NULL;
 }
 
-
+/*
+parses a function call by parsing all arguments as expressions
+*/
 ast* parse_call(void){ 
     ast *new_node = create_node(CALL, current_token->line, current_token->value);
     if(!new_node) return NULL;
@@ -670,6 +756,10 @@ ast* parse_call(void){
     return end_statement() ? new_node : NULL;
 }
 
+/*
+uses look_forward to determine the statement
+calls statment parsing function and returns it
+*/
 ast* parse_statement(void){
     if(current_token->type != T_IDENTIFIER){
         add_error_entry(ERROR, current_token->line, "Expected an Identifer");
@@ -722,6 +812,10 @@ ast* parse_statement(void){
     return NULL;
 }
 
+/*
+repeatedly calls parse_statement until the global token is at the END token
+returns 0 if successfull
+*/
 int parse_start(ast *current_node){
     int res = 0;
     token *last_token;
@@ -752,7 +846,8 @@ int parse_start(ast *current_node){
 
 /*
 this is the access function for main
-it resets the global variables
+parses the ast and checks errors
+returns root node
 */
 ast* generate_ast(token *first_token){
     ast *root = create_node(ROOT, 0, "root");
