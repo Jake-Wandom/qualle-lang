@@ -826,7 +826,7 @@ FILE *generate_QIR(ast *root){
     LLVMAttributeRef labelingAttribute = LLVMCreateStringAttribute(qir->context, "output_labeling_schema", 22, "", 0);
     LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, labelingAttribute);
 
-    if(!adaptive){
+    if(!dynamic){
         LLVMAttributeRef qubitsAttribute = LLVMCreateStringAttribute(qir->context, "required_num_qubits", 19, str_qubits, len_qubits);
         LLVMAddAttributeAtIndex(main_function, LLVMAttributeFunctionIndex, qubitsAttribute);
         LLVMAttributeRef resultsAttribute = LLVMCreateStringAttribute(qir->context, "required_num_results", 20, str_results, len_results);
