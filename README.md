@@ -19,6 +19,8 @@ You can try a few of the given examples in this repo.
 
 ## MAKEFILE guide
 If you want to recompile QUALLE use make clean && make.  
+By default, the binary is compiled into build/bin/  
+To run it you can either execute it or use make run --  (the -- is necessary to correctly use the compiler flags)  
 For additional debug options use make DEBUG=1.  
 make test runs a test script that rapidly compiles all example files.  
 
