@@ -94,7 +94,7 @@ A special excpetion for gate 6(record) adds the readonly attribute to it
 */
 void emit_gate(qir_context *qir, int gate_index, LLVMValueRef *args, LLVMTypeRef *param){
     if(qir->gate_type[gate_index] == 0){
-        qir->gate_type[gate_index] = LLVMFunctionType(void_type, param, q_gates[gate_index].args, 0);
+        qir->gate_type[gate_index] = LLVMFunctionType(void_type, param, q_gates[gate_index].args+q_gates[gate_index].angles, 0);
         qir->gate_fn[gate_index] = LLVMAddFunction(qir->module, q_gates[gate_index].qir_name, qir->gate_type[gate_index]);
         if(gate_index == 6){
             // readonly attribute
@@ -104,7 +104,7 @@ void emit_gate(qir_context *qir, int gate_index, LLVMValueRef *args, LLVMTypeRef
         }
     }
 
-    LLVMBuildCall2(qir->builder, qir->gate_type[gate_index], qir->gate_fn[gate_index], args, q_gates[gate_index].args, "");
+    LLVMBuildCall2(qir->builder, qir->gate_type[gate_index], qir->gate_fn[gate_index], args, q_gates[gate_index].args+q_gates[gate_index].angles, "");
 }
 
 /*
