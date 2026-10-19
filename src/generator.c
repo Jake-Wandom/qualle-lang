@@ -808,13 +808,13 @@ FILE *generate_QIR(ast *root){
     if(!qir->returned) LLVMBuildRet(qir->builder, LLVMConstInt(i64_type, 0, 0));
 
     // convert the number of qubits and results to strings
-    int len_qubits = floor(log10(ctx->num_qubits)) + 1; // this calculates the number of chars
-    if(ctx->num_qubits == 0) len_qubits = 1;
+    int len_qubits = 1; // this calculates the number of chars
+    if(ctx->num_qubits != 0) len_qubits = floor(log10(ctx->num_qubits)) + 1;
     char *str_qubits = malloc(len_qubits+1);
     snprintf(str_qubits, len_qubits+1, "%d", ctx->num_qubits);
 
-    int len_results = floor(log10(ctx->num_results)) + 1;
-    if(ctx->num_results == 0) len_results = 1;
+    int len_results = 1;
+    if(ctx->num_results != 0) len_results = floor(log10(ctx->num_results)) + 1;
     char *str_results = malloc(len_results+1);
     snprintf(str_results, len_results+1, "%d", ctx->num_results);
 
