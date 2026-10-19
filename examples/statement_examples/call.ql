@@ -4,6 +4,6 @@ X(q);
 Y(q);
 Z(q);
 RX(90, q);
-S(45, q);
+S(q);
 T(q);
 MEASURE(q);

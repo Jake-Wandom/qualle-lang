@@ -9,5 +9,3 @@ double e = 1-d
 
 int rem = 64 % 8
 
-# some examples for illegal operations
-#uint c = -5

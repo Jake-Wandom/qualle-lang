@@ -1,3 +1,8 @@
+def bell(qubit q0, qubit q1){
+    H(q0)
+    CX(q0,q1)
+}
+
 qubit q0 = 0
 qubit q1 = 0
 qubit q2 = 0
