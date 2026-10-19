@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "error_qualle.h"
 #include "global_flags.h"
 

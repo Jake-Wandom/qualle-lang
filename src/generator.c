@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "generator.h"
 #include "helper.h"
 #include "error_qualle.h"

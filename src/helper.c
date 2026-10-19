@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 void print_man_page(void){
-    printf("quallcom [FLAGS] [FILE] ... [FILE]\n\nFLAGS:\n  -h or --help: print this page\n  -p or --print: print information like file content, token lists and abstract syntax tree\n  -a or --adaptive: compile to the adaptive QIR profile\n -o or --optimise: activate optimisations\n  -l: generates a readable .ll file instead of bitcode");
+    printf("quallcom [FLAGS] [FILE] ... [FILE]\n\nFLAGS:\n  -h or --help: print this page\n  -p or --print: print information like file content, token lists and abstract syntax tree\n  -a or --adaptive: compile to the adaptive QIR profile\n  -o or --optimise: activate optimisations\n  -d: activate dynamic qubit allocation (only valid in the adaptive profile)\n  -l: generates a readable .ll file instead of bitcode\n");
 }
 
 void zero_buffer(char* buffer, size_t size){

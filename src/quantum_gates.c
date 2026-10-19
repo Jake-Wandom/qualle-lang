@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "quantum_gates.h"
 
 #include <string.h>
